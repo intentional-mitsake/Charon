@@ -5,6 +5,7 @@ import (
 	"charon/pkg/config"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 )
 
@@ -87,4 +88,24 @@ func ForwardRequest(req *config.HTTPRequest, from net.Conn, to net.Conn) error {
 	// Flush actually writes the dat to the upstream server
 	// before it, all data is written to a buffer, and then sent(flushed ig) to the upstream all at once
 	return writer.Flush() // returns only error, so either nil or err
+}
+
+// inverse fo ParseReqeust, returns http response status code
+func ParseResponse(conn net.Conn) (int, error) {
+	reader := bufio.NewReader(conn)
+	// response--> HTTP/1.1 200 OK
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		return 0, err
+	}
+	words := strings.Fields(response)
+	if len(words) < 2 {
+		return 0, fmt.Errorf("invalid response line: %s", response)
+	}
+	// words[0]--> "HTTP/1.1", words[1]--> "200"
+	code, err := strconv.Atoi(words[1]) // Atoi is pretth much ParseInt
+	if err != nil {
+		return 0, err
+	}
+	return code, nil
 }
