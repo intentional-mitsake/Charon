@@ -35,6 +35,7 @@ func ParseRequest(conn net.Conn) (*config.HTTPRequest, error) {
 			return nil, err
 		}
 		// if the next line is empty(\r\n)
+		// \r\n is a special char used by protocols like HTTP, SMTP to separate lines and headers
 		if header == "\r\n" {
 			break
 		}
@@ -51,4 +52,9 @@ func ParseRequest(conn net.Conn) (*config.HTTPRequest, error) {
 		}
 	}
 	return &httpRequest, nil
+}
+
+// from->client, to->upstream, forward the parsed http request to upstream
+func ForwardRequest(req *config.HTTPRequest, from net.Conn, to net.Conn) error {
+	return nil
 }
