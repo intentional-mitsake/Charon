@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -50,7 +51,21 @@ func HandleConnection(clientConn net.Conn) {
 		return
 	}
 
+	status, response, err := ParseResponse(upstreamConn)
+	if err != nil {
+		logger.Error("Error parsing response!", "error", err.Error())
+		return
+	}
+
 	// second dir, send response from upstream to client
+
+	// write the response line(first line, HTTP/1.1 200 OK) to the clientConn writer
+	// pretty much sending the response line to the client
+	fmt.Fprint(clientConn, response) // takes io.Writer and args, writes the args to the io.Writer
+
+	// after the response line, headers and body stll remain
+	// headers(Content-Type) and body(HTML) from upstream to client stlil ramins
+	// io.Copy is doing that
 	// also before the two io.Copy wwre happening simultaneously
 	// so two separate goroutines were used to make them run simultaneously
 	// now the first one(client to upstream) is already done(ParseRequest, ForwardRequest),
@@ -58,6 +73,13 @@ func HandleConnection(clientConn net.Conn) {
 	// only need to make sure this func(HandleConn) doesnt exit before sending a response to client
 	// so no goroutine needed, io.Copy blocks and continously reads(from upstream) and writes(to client) until conn close or error
 	io.Copy(clientConn, upstreamConn) // BLOCKS the main goroutine till the connection is closed or error occurs
+
+	// log the entire req at the end
+	logger.Info("Request completed!",
+		"Method", req.Method,
+		"Path", req.Path,
+		"Status", status,
+	)
 
 	/*
 		// in GO, chan struct{} is used for synchronization, it covers 0 bytes of ram,
