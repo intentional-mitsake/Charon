@@ -7,11 +7,13 @@ import (
 	"os"
 )
 
+// ref from: medium @diasmashikovnasa
+// basically building a reverse proxy
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8848"
+		port = "80"
 	}
 	addr := ":" + port
 	// 1. takes network and address(port)
