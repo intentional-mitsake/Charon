@@ -82,9 +82,10 @@ func ForwardRequest(req *config.HTTPRequest, from net.Conn, to net.Conn) error {
 	fmt.Fprintf(writer, "X-Forwarded-For: %s\r\n", clientIP)
 	logger.Info("Injected X-Forwarded-For header!", "IP", clientIP)
 	// blank line to show end of headers
-	if _, err := fmt.Fprintf(writer, "\r\n"); err != nil {
+	if _, err := fmt.Fprint(writer, "\r\n"); err != nil {
 		return err
 	}
+	//logger.Info("End of Headers")
 	// Flush actually writes the dat to the upstream server
 	// before it, all data is written to a buffer, and then sent(flushed ig) to the upstream all at once
 	return writer.Flush() // returns only error, so either nil or err
@@ -92,9 +93,11 @@ func ForwardRequest(req *config.HTTPRequest, from net.Conn, to net.Conn) error {
 
 // inverse fo ParseReqeust, returns http response status code
 func ParseResponse(conn net.Conn) (int, string, error) {
+	//logger.Info("Parser Called")
 	reader := bufio.NewReader(conn)
 	// response--> HTTP/1.1 200 OK
 	response, err := reader.ReadString('\n')
+	logger.Info("Received response!", "Response", response)
 	if err != nil {
 		return 0, "", err
 	}

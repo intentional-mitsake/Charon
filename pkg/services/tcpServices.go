@@ -41,6 +41,8 @@ func HandleConnection(clientConn net.Conn) {
 		return // exit if cnat connec t ot the upstream
 	}
 	defer upstreamConn.Close()
+	// need to use the same reader for upstream cuz ForwardRequest and ParseResponse uses it
+	//
 
 	// 3. send and receive data to and fro the proxy and the upstream server
 
@@ -50,6 +52,7 @@ func HandleConnection(clientConn net.Conn) {
 		logger.Error("Error forwarding request!", "error", err.Error())
 		return
 	}
+	//logger.Debug("Forwarding Complete-Response Parsing Started")
 
 	status, response, err := ParseResponse(upstreamConn)
 	if err != nil {
