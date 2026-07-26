@@ -78,5 +78,7 @@ func ForwardRequest(req *config.HTTPRequest, from net.Conn, to net.Conn) error {
 	logger.Info("Injected X-Forwarded-For header!", "IP", clientIP)
 	// blank line to show end of headers
 	fmt.Fprintf(writer, "\r\n")
-	return nil
+	// Flush actually writes the dat to the upstream server
+	// before it, all data is written to a buffer, and then sent(flushed ig) to the upstream all at once
+	return writer.Flush() // returns only error, so either nil or err
 }
