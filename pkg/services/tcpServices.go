@@ -51,6 +51,12 @@ func HandleConnection(clientConn net.Conn) {
 	}
 
 	// second dir, send response from upstream to client
+	// also before the two io.Copy wwre happening simultaneously
+	// so two separate goroutines were used to make them run simultaneously
+	// now the first one(client to upstream) is already done(ParseRequest, ForwardRequest),
+	// now the second one(upstream to client) is the only one left, no need to run simul
+	// only need to make sure this func(HandleConn) doesnt exit before sending a response to client
+	// so no goroutine needed, io.Copy blocks and continously reads(from upstream) and writes(to client) until conn close or error
 	io.Copy(clientConn, upstreamConn) // BLOCKS the main goroutine till the connection is closed or error occurs
 
 	/*
