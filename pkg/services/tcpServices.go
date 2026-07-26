@@ -15,7 +15,8 @@ func init() {
 	// cant have this insdiee HandleConnection
 	// its a goroutine, so reading and writing to upstreamAddr var becomes a race
 	if upstreamAddr == "" {
-		upstreamAddr = "127.0.0.1:80"
+		// backend default
+		upstreamAddr = "127.0.0.1:8848"
 	}
 }
 
