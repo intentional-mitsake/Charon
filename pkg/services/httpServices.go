@@ -71,5 +71,12 @@ func ForwardRequest(req *config.HTTPRequest, from net.Conn, to net.Conn) error {
 		fmt.Fprintf(writer, "%s: %s\r\n", key, val)
 	}
 
+	// inject a X-Forwarded-For header to the request
+	// takes Host:Port string, returns IP, PORT, error
+	clientIP, _, _ := net.SplitHostPort(from.RemoteAddr().String())
+	fmt.Fprintf(writer, "X-Forwarded-For: %s\r\n", clientIP)
+	logger.Info("Injected X-Forwarded-For header!", "IP", clientIP)
+	// blank line to show end of headers
+	fmt.Fprintf(writer, "\r\n")
 	return nil
 }
