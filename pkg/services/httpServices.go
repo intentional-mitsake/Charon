@@ -63,12 +63,16 @@ func ForwardRequest(req *config.HTTPRequest, from net.Conn, to net.Conn) error {
 
 	// takes io.Writer, formated string and args, writes the formated string to the io.Writer
 	// \r\n used to separate lines and headers in HTTP protocol
-	fmt.Fprintf(writer, "%s %s %s\r\n", req.Method, req.Path, req.Version)
+	if _, err := fmt.Fprintf(writer, "%s %s %s\r\n", req.Method, req.Path, req.Version); err != nil {
+		return err
+	}
 	logger.Info("Forwarded request!", "Request", req.Method+" "+req.Path+" "+req.Version)
 
 	// headers
 	for key, val := range req.Headers {
-		fmt.Fprintf(writer, "%s: %s\r\n", key, val)
+		if _, err := fmt.Fprintf(writer, "%s: %s\r\n", key, val); err != nil {
+			return err
+		}
 	}
 
 	// inject a X-Forwarded-For header to the request
@@ -77,7 +81,9 @@ func ForwardRequest(req *config.HTTPRequest, from net.Conn, to net.Conn) error {
 	fmt.Fprintf(writer, "X-Forwarded-For: %s\r\n", clientIP)
 	logger.Info("Injected X-Forwarded-For header!", "IP", clientIP)
 	// blank line to show end of headers
-	fmt.Fprintf(writer, "\r\n")
+	if _, err := fmt.Fprintf(writer, "\r\n"); err != nil {
+		return err
+	}
 	// Flush actually writes the dat to the upstream server
 	// before it, all data is written to a buffer, and then sent(flushed ig) to the upstream all at once
 	return writer.Flush() // returns only error, so either nil or err
