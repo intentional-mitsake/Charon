@@ -56,5 +56,20 @@ func ParseRequest(conn net.Conn) (*config.HTTPRequest, error) {
 
 // from->client, to->upstream, forward the parsed http request to upstream
 func ForwardRequest(req *config.HTTPRequest, from net.Conn, to net.Conn) error {
+	// create a writer for the upstream connection
+	writer := bufio.NewWriter(to) // again, net.Conn can also be io.Writer
+
+	// write things to the writer( thing that is sent to the upstream server)
+
+	// takes io.Writer, formated string and args, writes the formated string to the io.Writer
+	// \r\n used to separate lines and headers in HTTP protocol
+	fmt.Fprintf(writer, "%s %s %s\r\n", req.Method, req.Path, req.Version)
+	logger.Info("Forwarded request!", "Request", req.Method+" "+req.Path+" "+req.Version)
+
+	// headers
+	for key, val := range req.Headers {
+		fmt.Fprintf(writer, "%s: %s\r\n", key, val)
+	}
+
 	return nil
 }

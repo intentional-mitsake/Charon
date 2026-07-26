@@ -1,6 +1,7 @@
 package services
 
 import (
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -42,12 +43,15 @@ func HandleConnection(clientConn net.Conn) {
 
 	// 3. send and receive data to and fro the proxy and the upstream server
 
-	// from
+	// sending parsed req to upstream, first dir
 	err = ForwardRequest(req, clientConn, upstreamConn) // from->client, to->upstream
 	if err != nil {
 		logger.Error("Error forwarding request!", "error", err.Error())
 		return
 	}
+
+	// second dir, send response from upstream to client
+	io.Copy(clientConn, upstreamConn) // BLOCKS the main goroutine till the connection is closed or error occurs
 
 	/*
 		// in GO, chan struct{} is used for synchronization, it covers 0 bytes of ram,
