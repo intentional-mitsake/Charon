@@ -14,3 +14,10 @@ type HTTPRequest struct {
 	Headers map[string]string // Authorization: Bearer XXXXXXXX(key: value), Accept: application/json
 	Body    string            // json
 }
+
+func CreateHttpReq() HTTPRequest {
+	return HTTPRequest{
+		// panics if not initialized
+		Headers: make(map[string]string),
+	}
+}
