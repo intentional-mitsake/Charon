@@ -16,6 +16,9 @@ func main() {
 	}
 	upstreamAddr := fmt.Sprintf(":%s", upstreamPort)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain") // to test later
+		w.Header().Set("Connection", "close")        // force the connection to close
+
 		response := "This is the response from PORT: " + upstreamPort
 		// HandleFunc takes a pattern(string) and a handler function
 		// the handler func takes a writer and a request, this writes the response to the writer
