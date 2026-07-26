@@ -19,12 +19,12 @@ func init() {
 	}
 }
 
-func HandleConnection(conn net.Conn) {
+func HandleConnection(clientConn net.Conn) {
 	// 1. Parse the connection
-	logger.Info("Accepted connection!", "IP", conn.RemoteAddr().String())
-	defer conn.Close()
+	logger.Info("Accepted connection!", "IP", clientConn.RemoteAddr().String())
+	defer clientConn.Close()
 
-	req, err := ParseRequest(conn)
+	req, err := ParseRequest(clientConn)
 	if err != nil {
 		logger.Error("Error while parsing request!", "error", err.Error())
 		return // exit if cant parse
@@ -43,7 +43,7 @@ func HandleConnection(conn net.Conn) {
 	// 3. send and receive data to and fro the proxy and the upstream server
 
 	// from
-	err = ForwardRequest(req, conn, upstreamConn) // from->client, to->upstream
+	err = ForwardRequest(req, clientConn, upstreamConn) // from->client, to->upstream
 	if err != nil {
 		logger.Error("Error forwarding request!", "error", err.Error())
 		return
