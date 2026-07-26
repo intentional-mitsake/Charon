@@ -1,4 +1,4 @@
-package testserver
+package main
 
 import (
 	"fmt"
