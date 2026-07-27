@@ -20,7 +20,7 @@ func CreateUpstream(address string) Upstream {
 	return Upstream{Address: address, ActiveConns: 0}
 }
 
-func (u *Upstream) ACquire() {
+func (u *Upstream) Acquire() {
 	// func is same as using:
 	// mu.Lock() -> counter++ -> mu.Unlock()
 	// diff is mu can cover blocks of code(mutli var), wheras this is only for a single var(int, pointer)

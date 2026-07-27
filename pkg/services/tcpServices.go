@@ -21,7 +21,10 @@ func init() {
 	}
 }
 
-func HandleConnection(clientConn net.Conn) {
+func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool) {
+	upstream := upstreamPool.SelectUpstream() // select least conn
+	upstream.Acquire()                        // acquire the least conn, add 1
+	defer upstream.Release()                  // release the least conn, sub 1
 	// 1. Parse the connection
 	logger.Info("Accepted connection!", "IP", clientConn.RemoteAddr().String())
 	defer clientConn.Close()
@@ -35,7 +38,7 @@ func HandleConnection(clientConn net.Conn) {
 	// 2. already got the tcp conn from client to the proxy(main.go)
 	// now open another conn to the upstream server(actual backend server that processes the requests)
 	// net.Dial creates a tcp connection as a client to the given address(upstreamAddr/backend server)
-	upstreamConn, err := net.Dial("tcp", upstreamAddr)
+	upstreamConn, err := net.Dial("tcp", upstream.Address)
 	if err != nil {
 		logger.Error("Error connecting to upstream!", "error", err.Error())
 		return // exit if cnat connec t ot the upstream
