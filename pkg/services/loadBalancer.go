@@ -63,7 +63,7 @@ func (p *UpstreamPool) SelectUpstream() *Upstream {
 	for indx, u := range p.Upstreams {
 		conns := atomic.LoadInt64(&u.ActiveConns) // never directlu
 		if conns < leastConn {
-			leastConn = u.ActiveConns
+			leastConn = conns // never directly
 			selectedIndx = indx
 		}
 	}
