@@ -2,6 +2,7 @@ package services
 
 import (
 	"log/slog"
+	"math"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -44,7 +45,7 @@ func (p *UpstreamPool) SelectUpstream() *Upstream {
 	p.mu.RLock() // RLock() means this data is only going to be read, its not going to be changed
 	// so it can be read concurrently, but not changed
 	defer p.mu.RUnlock()
-	var leastConn = int64(100000) // a really large num so that it can be changed to min value later
+	var leastConn = int64(math.MaxInt64) // a really large num so that it can be changed to min value later
 	var selectedIndx = 0
 	for indx, u := range p.Upstreams {
 		conns := atomic.LoadInt64(&u.ActiveConns) // never directlu
