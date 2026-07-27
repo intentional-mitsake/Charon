@@ -1,22 +1,37 @@
 package services
 
 import (
-	"charon/pkg/config"
 	"log/slog"
 	"os"
+	"sync"
+	"sync/atomic"
 )
 
 var log = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
 
-// algo ref from geeksforgeeks
-func SelectUpstream(upstreamList []config.Upstream) config.Upstream {
-	var leastConn = 1000 // let it be max initially, so it can be immediately replaced on first itertation
-	var selectedIndx int
-	for indx, upstream := range upstreamList {
-		if upstream.ActiveConns < leastConn {
-			leastConn = upstream.ActiveConns
-			selectedIndx = indx
-		}
-	}
-	return upstreamList[selectedIndx]
+// for least connections algo
+type Upstream struct {
+	Address     string // 127.0.0.1:8848
+	ActiveConns int64  // 0, should never access this directly, cuz it can be changed concurrently
+}
+
+func CreateUpstream(address string) Upstream {
+	return Upstream{Address: address, ActiveConns: 0}
+}
+
+func (u *Upstream) ACquire() {
+	// func is same as using:
+	// mu.Lock() -> counter++ -> mu.Unlock()
+	// diff is mu can cover blocks of code(mutli var), wheras this is only for a single var(int, pointer)
+	// also this is way faster & mu BLOCKS the thread, this doesnt
+	atomic.AddInt64(&u.ActiveConns, 1)
+}
+
+func (u *Upstream) Release() {
+	atomic.AddInt64(&u.ActiveConns, -1)
+}
+
+type UpstreamPool struct {
+	Upstreams []Upstream
+	mu        sync.Mutex
 }
