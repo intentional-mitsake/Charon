@@ -25,12 +25,19 @@ func main() {
 		os.Exit(1)
 	}
 	logger.Info("Started listening", "PORT", port)
+
+	// initilaze upstream pool
+	upstreamPool := services.InitUpstreamPool()
+	if upstreamPool == nil {
+		logger.Error("Error initializing upstream pool")
+		os.Exit(1)
+	}
 	for {
 		// 2. accepts connections
 		conn, err := listener.Accept()
 		if err != nil {
 			logger.Error("Error accepting connection!", "error", err.Error())
 		}
-		go services.HandleConnection(conn)
+		go services.HandleConnection(conn, upstreamPool)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"math"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -38,6 +39,18 @@ type UpstreamPool struct {
 	// Mutex doesnt allow concqurrent access, go routines wait
 	// RWMutex allows concurrent access, mutliple can read simul, but only 1 can write, for writing wait
 	mu sync.RWMutex // due to this being a slice, cant use atomic, must use mutex to keep it safe from concurrent access
+}
+
+func InitUpstreamPool() *UpstreamPool {
+	addrs := os.Getenv("UPSTREAM_ADDRS")
+	if addrs == "" {
+		addrs = "127.0.0.1:8848,127.0.0.1:8849,127.0.0.1:8850"
+	}
+	pool := &UpstreamPool{}
+	for _, addr := range strings.Split(addrs, ",") {
+		pool.Upstreams = append(pool.Upstreams, &Upstream{Address: strings.TrimSpace(addr), ActiveConns: 0})
+	}
+	return pool
 }
 
 // ref for least conn from geeksforgeeks
