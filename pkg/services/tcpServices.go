@@ -23,8 +23,13 @@ func init() {
 
 func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool) {
 	upstream := upstreamPool.SelectUpstream() // select least conn
-	upstream.Acquire()                        // acquire the least conn, add 1
-	defer upstream.Release()                  // release the least conn, sub 1
+	if upstream == nil {
+		// in case of som err
+		logger.Error("No upstream available!")
+		return
+	}
+	upstream.Acquire()       // acquire the least conn, add 1
+	defer upstream.Release() // release the least conn, sub 1
 	// 1. Parse the connection
 	logger.Info("Accepted connection!", "IP", clientConn.RemoteAddr().String())
 	defer clientConn.Close()
