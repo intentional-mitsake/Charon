@@ -9,17 +9,6 @@ import (
 )
 
 var logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
-var upstreamAddr = os.Getenv("UPSTREAM_ADDR")
-
-// init() is called when the package is imported automatically, its like a constructor
-func init() {
-	// cant have this insdiee HandleConnection
-	// its a goroutine, so reading and writing to upstreamAddr var becomes a race
-	if upstreamAddr == "" {
-		// backend default
-		upstreamAddr = "127.0.0.1:8848"
-	}
-}
 
 func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool) {
 	upstream := upstreamPool.SelectUpstream() // select least conn
