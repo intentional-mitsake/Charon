@@ -15,6 +15,7 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool) {
 	if upstream == nil {
 		// in case of som err
 		logger.Error("No upstream available!")
+		clientConn.Write([]byte("HTTP/1.1 503 No Upstream Available\r\n"))
 		return
 	}
 	upstream.Acquire()       // acquire the least conn, add 1
