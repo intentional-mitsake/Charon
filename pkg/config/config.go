@@ -21,3 +21,13 @@ func CreateHttpReq() HTTPRequest {
 		Headers: make(map[string]string),
 	}
 }
+
+// for least connections algo
+type Upstream struct {
+	Address     string // 127.0.0.1:8848
+	ActiveConns int    // 0
+}
+
+func CreateUpstream(address string) Upstream {
+	return Upstream{Address: address, ActiveConns: 0}
+}
