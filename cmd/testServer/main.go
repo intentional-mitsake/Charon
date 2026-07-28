@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 )
 
 var logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
@@ -20,14 +21,15 @@ func main() {
 		w.Header().Set("Content-Type", "text/plain") // to test later
 		w.Header().Set("Connection", "close")        // force the connection to close
 
-		response := "This is the response from PORT: " + upstreamPort
-		fmt.Fprintf(w, "Server %s responded to request\n", serverName)
+		response := "This is the response from backend: " + serverName
+		// 200 ms delay on each request so that servers can ACQUIRE for longer to test the load balancer
+		time.Sleep(200 * time.Millisecond)
 		// HandleFunc takes a pattern(string) and a handler function
 		// the handler func takes a writer and a request, this writes the response to the writer
 		// when a requseet is made to port 8848 with pattern "/",
 		// it will do this, .i.e write this response to the ResponseWriter
 		fmt.Fprint(w, response)
-		logger.Info("Responded to request", "Response", response)
+		logger.Info("Responded to request", "Upstream", serverName, "Response", response)
 	})
 	logger.Info("Started listening", "PORT", upstreamPort)
 	http.ListenAndServe(upstreamAddr, nil)

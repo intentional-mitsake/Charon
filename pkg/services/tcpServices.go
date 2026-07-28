@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"time"
 
 	_ "github.com/google/uuid"
 )
@@ -13,6 +14,7 @@ import (
 var logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
 
 func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool) {
+	start := time.Now()                       // for latency
 	upstream := upstreamPool.SelectUpstream() // select least conn
 	if upstream == nil {
 		// in case of som err
@@ -87,6 +89,7 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool) {
 		"Method", req.Method,
 		"Path", req.Path,
 		"Status", status,
+		"Latency", time.Since(start).String(), //  pretty much time.Now().Sub(start)
 	)
 
 	/*
