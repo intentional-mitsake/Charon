@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net"
 	"os"
+
+	_ "github.com/google/uuid"
 )
 
 var logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))

@@ -1,0 +1,41 @@
+services:
+# the first service
+  proxy:
+  # build from the Dockerfile in current directory
+    build: . 
+    # maps port 80 of the container to port 80 of the host
+    ports:
+      - "80:80" 
+    # env vars needed
+    environment:
+    # because all the services are in the def together, we can access them by name, no need to specify ip
+    # also can use same port for each backend as Docker auto differentiates them
+      - UPSTREAM_ADDRS=backend-1:8848,backend-2:8849,backend-3:8850
+  
+  # rest of the services
+  backend-1:
+  # build from the Dockerfile in testServer dir
+    build: 
+    # use ./ dir for the build so that it can find go.mod and go.sum
+      context: .
+      # use Dockerfile in ./cmd/testServer dir
+      dockerfile: ./cmd/testServer/Dockerfile
+    environment:
+      - SERVER_NAME=backend-1
+      - UPSTREAM_PORT=8848
+
+  backend-2:
+    build:
+      context: .
+      dockerfile: ./cmd/testServer/Dockerfile
+    environment:
+      - SERVER_NAME=backend-2
+      - UPSTREAM_PORT=8849
+
+  backend-3:
+    build:
+      context: .
+      dockerfile: ./cmd/testServer/Dockerfile
+    environment:
+      - SERVER_NAME=backend-3
+      - UPSTREAM_PORT=8850
