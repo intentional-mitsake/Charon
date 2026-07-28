@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"charon/pkg/config"
 	"fmt"
+	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -92,23 +93,70 @@ func ForwardRequest(req *config.HTTPRequest, from net.Conn, to net.Conn) error {
 }
 
 // inverse fo ParseReqeust, returns http response status code
-func ParseResponse(conn net.Conn) (int, string, error) {
+func ParseResponse(conn net.Conn) (*config.HTTPResponse, error) {
 	//logger.Info("Parser Called")
+	// NOTE: \r\n is used to separate lines and headers
+	// \r\n means end of headers and start of body, careful about the diff
 	reader := bufio.NewReader(conn)
-	// response--> HTTP/1.1 200 OK
+	httpRes := config.CreateHttpResp()
+	// response--> HTTP/1.1 200 OK\r\n
 	response, err := reader.ReadString('\n')
 	logger.Info("Received response!", "Response", response)
 	if err != nil {
-		return 0, "", err
+		return &config.HTTPResponse{}, err
 	}
 	words := strings.Fields(response)
 	if len(words) < 2 {
-		return 0, "", fmt.Errorf("invalid response line: %s", response)
+		return &config.HTTPResponse{}, fmt.Errorf("invalid response line: %s", response)
 	}
 	// words[0]--> "HTTP/1.1", words[1]--> "200"
 	code, err := strconv.Atoi(words[1]) // Atoi is pretth much ParseInt
 	if err != nil {
-		return 0, "", err
+		return &config.HTTPResponse{}, err
 	}
-	return code, response, nil
+	httpRes.StatusCode = code
+	httpRes.Response = response
+	// read headers
+	for {
+		header, err := reader.ReadString('\n')
+		if err != nil {
+			return &config.HTTPResponse{}, err
+		}
+		// if the next line is empty(\r\n)
+		// \r\n is a special char used by protocols like HTTP, SMTP to separate lines and headers
+		if header == "\r\n" {
+			break
+		}
+		words := strings.SplitN(header, ":", 2)
+		if len(words) == 2 {
+			key := strings.TrimSpace(words[0]) // trim leading and trailing spaces
+			val := strings.TrimSpace(words[1])
+			httpRes.Headers[key] = val
+		}
+	}
+
+	// read body
+	contentLengthStr, exists := httpRes.Headers["Content-Length"]
+	if !exists {
+		return &config.HTTPResponse{}, fmt.Errorf("missing Content-Length header")
+	}
+	contentLength, err := strconv.Atoi(contentLengthStr)
+	if err != nil {
+		return &config.HTTPResponse{}, err
+	}
+
+	bodyBytes := make([]byte, contentLength)
+	_, err = io.ReadFull(reader, bodyBytes)
+	if err != nil {
+		return &config.HTTPResponse{}, err
+	}
+	if err != nil {
+		return &config.HTTPResponse{}, err
+	}
+	httpRes.Body = string(bodyBytes)
+	// never do this way, always take the content lenght form header
+	//contentLength := len(httpRes.Body)
+	//httpRes.Headers["Content-Length"] = fmt.Sprintf("%d", contentLength)
+
+	return &httpRes, nil
 }

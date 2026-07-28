@@ -45,6 +45,8 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool) {
 	upstreamConn, err := net.Dial("tcp", upstream.Address)
 	if err != nil {
 		logger.Error("Error connecting to upstream!", "error", err.Error())
+		// 503 service unavailable
+		clientConn.Write([]byte("HTTP/1.1 503 Failed to connect to Upstream\r\n\r\n"))
 		return // exit if cnat connec t ot the upstream
 	}
 	defer upstreamConn.Close()
@@ -57,22 +59,33 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool) {
 	err = ForwardRequest(req, clientConn, upstreamConn) // from->client, to->upstream
 	if err != nil {
 		logger.Error("Error forwarding request!", "error", err.Error())
+		// 502 bad gateway
+		clientConn.Write([]byte("HTTP/1.1 502 Failed to forward request\r\n\r\n"))
 		return
 	}
 	//logger.Debug("Forwarding Complete-Response Parsing Started")
 
-	status, response, err := ParseResponse(upstreamConn)
+	httpResponse, err := ParseResponse(upstreamConn)
 	if err != nil {
 		logger.Error("Error parsing response!", "error", err.Error())
+		// 502 bad gateway
+		clientConn.Write([]byte("HTTP/1.1 502 Failed to parse response\r\n\r\n"))
 		return
 	}
-
+	response := httpResponse.Response // HTTP/1.1 200 OK\r\n --> already has \r\n, adding another \r\n wuld signal end of headers
+	for key, val := range httpResponse.Headers {
+		response += fmt.Sprintf("%s: %s\r\n", key, val) // Content-Type: text/html\r\n
+	}
+	response += "\r\n"            // blank line to show end of headers
+	response += httpResponse.Body // HTML from upstream server
+	// NO \r\n after the body, HTTP rule, content lenght is the length of the body, \r\n adds to that
+	//"Connection: close\r\n\r\n" // header + separator + end of headers
 	// second dir, send response from upstream to client
 
 	// write the response line(first line, HTTP/1.1 200 OK) to the clientConn writer
 	// pretty much sending the response line to the client
 	fmt.Fprint(clientConn, response) // takes io.Writer and args, writes the args to the io.Writer
-
+	//clientConn.Write([]byte(response))
 	// after the response line, headers and body stll remain
 	// headers(Content-Type) and body(HTML) from upstream to client stlil ramins
 	// io.Copy is doing that
@@ -88,10 +101,9 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool) {
 	logger.Info("Request completed!",
 		"Method", req.Method,
 		"Path", req.Path,
-		"Status", status,
+		"Status", httpResponse.StatusCode,
 		"Latency", time.Since(start).String(), //  pretty much time.Now().Sub(start)
 	)
-
 	/*
 		This was Layer 4 implementation, above is Layer 7 implementation
 			// in GO, chan struct{} is used for synchronization, it covers 0 bytes of ram,
