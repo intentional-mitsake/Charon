@@ -11,6 +11,7 @@ var logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
 
 func main() {
 	upstreamPort := os.Getenv("UPSTREAM_PORT")
+	serverName := os.Getenv("SERVER_NAME")
 	if upstreamPort == "" {
 		upstreamPort = "8848"
 	}
@@ -20,6 +21,7 @@ func main() {
 		w.Header().Set("Connection", "close")        // force the connection to close
 
 		response := "This is the response from PORT: " + upstreamPort
+		fmt.Fprintf(w, "Server %s responded to request\n", serverName)
 		// HandleFunc takes a pattern(string) and a handler function
 		// the handler func takes a writer and a request, this writes the response to the writer
 		// when a requseet is made to port 8848 with pattern "/",
