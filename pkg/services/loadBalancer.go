@@ -60,8 +60,11 @@ func (p *UpstreamPool) SelectUpstream() *Upstream {
 	// so it can be read concurrently, but not changed
 	defer p.mu.RUnlock()
 	var leastConn = int64(math.MaxInt64) // a really large num so that it can be changed to min value later
-	var selectedIndx = 0
+	var selectedIndx = math.MaxInt       // to check whether any upstream is healthy(if no change, no select)
 	for indx, u := range p.Upstreams {
+		if !u.Healthy {
+			continue
+		}
 		conns := atomic.LoadInt64(&u.ActiveConns) // never directlu
 		if conns < leastConn {
 			leastConn = conns // never directly
@@ -69,5 +72,10 @@ func (p *UpstreamPool) SelectUpstream() *Upstream {
 		}
 	}
 
+	if selectedIndx == math.MaxInt {
+		logger.Info("No healthy upstreams available!")
+		return nil
+	}
+	logger.Info("Selected upstream", "Upstream", p.Upstreams[selectedIndx].Address, "Connections", leastConn)
 	return p.Upstreams[selectedIndx]
 }
