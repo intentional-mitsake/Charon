@@ -16,7 +16,10 @@ type Upstream struct {
 }
 
 func CreateUpstream(address string) Upstream {
-	return Upstream{Address: address, ActiveConns: 0, Healthy: true}
+	return Upstream{Address: address,
+		ActiveConns: 0,
+		Healthy:     true,
+	}
 }
 
 func (u *Upstream) Acquire() {
@@ -33,7 +36,8 @@ func (u *Upstream) Release() {
 }
 
 type UpstreamPool struct {
-	Upstreams []*Upstream // pointer cuz if use slice, the swap problem happens
+	Upstreams         []*Upstream // pointer cuz if use slice, the swap problem happens
+	RoundRobinCounter int64       // for fallback
 	// Mutex doesnt allow concqurrent access, go routines wait
 	// RWMutex allows concurrent access, mutliple can read simul, but only 1 can write, for writing wait
 	mu sync.RWMutex // due to this being a slice, cant use atomic, must use mutex to keep it safe from concurrent access
@@ -57,25 +61,47 @@ func InitUpstreamPool() *UpstreamPool {
 
 // ref for least conn from geeksforgeeks
 func (p *UpstreamPool) SelectUpstream() *Upstream {
-	p.mu.RLock() // RLock() means this data is only going to be read, its not going to be changed
+	//p.mu.RLock() // RLock() means this data is only going to be read, its not going to be changed
 	// so it can be read concurrently, but not changed
-	defer p.mu.RUnlock()
+	//defer p.mu.RUnlock()
+	p.mu.Lock()
+	defer p.mu.Unlock()                  // adding RoundRobin means it needs to be modified(written to)
 	var leastConn = int64(math.MaxInt64) // a really large num so that it can be changed to min value later
-	var selectedIndx = math.MaxInt       // to check whether any upstream is healthy(if no change, no select)
+	//var selectedIndx = math.MaxInt       // to check whether any upstream is healthy(if no change, no select)
+	var selectOptions []int
 	for indx, u := range p.Upstreams {
 		if !u.Healthy {
 			continue
 		}
 		conns := atomic.LoadInt64(&u.ActiveConns) // never directlu
 		if conns < leastConn {
-			leastConn = conns // never directly
-			selectedIndx = indx
+			leastConn = conns           // never directly
+			selectOptions = []int{indx} // reset and add current index
+		} else if conns == leastConn { // a conn has same val as leastConn, means tie, multi with same,
+			// round robin time
+			selectOptions = append(selectOptions, indx) // if tie, append, already has prev indx(leastConn)
 		}
 	}
 
-	if selectedIndx == math.MaxInt {
+	if len(selectOptions) == 0 { // if none were selected/healthy
 		logger.Info("No healthy upstreams available!")
 		return nil
+	}
+	var selectedIndx int
+	if len(selectOptions) == 1 { // if only one option
+		selectedIndx = selectOptions[0]
+	} else { // if more than one
+		// (56+1) % 3 = 0, (1983+1) % 2 = 1
+		p.RoundRobinCounter++
+		// to make this really unpredictable, i could do this:
+		// p.RoundRobinCounter = (p.RoundRobinCounter + 1) % int64(len(selectOptions))
+		// p.RoundRobinCounter always stays btwn 0-len(selectOptions)-1, so this is fine
+		// in the version used, p.RoundRobinCounter grows by 1 every time
+		// it will become a very large num eventually, so prob need to reset
+		// or mayba apply the unpredictable method
+		option := (p.RoundRobinCounter + 1) % int64(len(selectOptions)) // round robin
+		// [0,1,2] -> selectOptions[1]-->1
+		selectedIndx = selectOptions[option]
 	}
 	logger.Info("Selected upstream", "Upstream", p.Upstreams[selectedIndx].Address, "Connections", leastConn)
 	return p.Upstreams[selectedIndx]
