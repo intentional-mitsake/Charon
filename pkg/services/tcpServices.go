@@ -15,7 +15,12 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool) {
 	if upstream == nil {
 		// in case of som err
 		logger.Error("No upstream available!")
-		clientConn.Write([]byte("HTTP/1.1 503 No Upstream Available\r\n"))
+		// Write func sends raw bytes direct to the client on the TCP conn
+		// \r\n for end of status line, 2nd \r\n for end of headers
+		// the client conn stops reading from this point cuz of \r\n\r\n(endof headers) adn no body
+		// return closes the conn itself by triggering defer clientConn.Close()
+		// a http parser on client side reads this and stops the conn cuz it got a respnse
+		clientConn.Write([]byte("HTTP/1.1 503 No Upstream Available\r\n\r\n"))
 		return
 	}
 	upstream.Acquire()       // acquire the least conn, add 1

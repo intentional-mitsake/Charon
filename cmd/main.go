@@ -32,6 +32,8 @@ func main() {
 		logger.Error("Error initializing upstream pool")
 		os.Exit(1)
 	}
+	// btw no waitgroups here cuz no need to wait for all connections to finish
+	// each go routine(connection) is indep and doesnt need to wait for others, its not concurrent, its parallel
 	for {
 		// 2. accepts connections
 		conn, err := listener.Accept()
