@@ -15,10 +15,11 @@ var log = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
 type Upstream struct {
 	Address     string // 127.0.0.1:8848
 	ActiveConns int64  // 0, should never access this directly, cuz it can be changed concurrently
+	Healthy     bool   // fro health checks later
 }
 
 func CreateUpstream(address string) Upstream {
-	return Upstream{Address: address, ActiveConns: 0}
+	return Upstream{Address: address, ActiveConns: 0, Healthy: true}
 }
 
 func (u *Upstream) Acquire() {
