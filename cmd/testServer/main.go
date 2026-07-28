@@ -22,6 +22,8 @@ func main() {
 		w.Header().Set("Connection", "close")        // force the connection to close
 
 		response := "This is the response from backend: " + serverName
+		contentLength := len(response)
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", contentLength))
 		// 200 ms delay on each request so that servers can ACQUIRE for longer to test the load balancer
 		time.Sleep(200 * time.Millisecond)
 		// HandleFunc takes a pattern(string) and a handler function

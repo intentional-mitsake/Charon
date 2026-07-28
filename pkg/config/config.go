@@ -15,9 +15,22 @@ type HTTPRequest struct {
 	Body    string            // json
 }
 
+type HTTPResponse struct {
+	StatusCode int
+	Response   string
+	Headers    map[string]string
+	Body       string
+}
+
 func CreateHttpReq() HTTPRequest {
 	return HTTPRequest{
 		// panics if not initialized
+		Headers: make(map[string]string),
+	}
+}
+
+func CreateHttpResp() HTTPResponse {
+	return HTTPResponse{
 		Headers: make(map[string]string),
 	}
 }
