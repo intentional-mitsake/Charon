@@ -1,15 +1,12 @@
 package services
 
 import (
-	"log/slog"
 	"math"
 	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
 )
-
-var log = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
 
 // for least connections algo
 type Upstream struct {
@@ -49,7 +46,11 @@ func InitUpstreamPool() *UpstreamPool {
 	}
 	pool := &UpstreamPool{}
 	for _, addr := range strings.Split(addrs, ",") {
-		pool.Upstreams = append(pool.Upstreams, &Upstream{Address: strings.TrimSpace(addr), ActiveConns: 0})
+		pool.Upstreams = append(pool.Upstreams, &Upstream{
+			Address:     strings.TrimSpace(addr),
+			ActiveConns: 0,
+			Healthy:     true,
+		})
 	}
 	return pool
 }
