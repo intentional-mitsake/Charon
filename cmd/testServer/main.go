@@ -33,6 +33,15 @@ func main() {
 		fmt.Fprint(w, response)
 		logger.Info("Responded to request", "Upstream", serverName, "Response", response)
 	})
+
+	// health endpoint
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		// set headeers
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Connection", "close")
+		w.WriteHeader(http.StatusOK) // HTTP 200 OK
+		logger.Info("Responded to health check request")
+	})
 	logger.Info("Started listening", "PORT", upstreamPort)
 	http.ListenAndServe(upstreamAddr, nil)
 }
