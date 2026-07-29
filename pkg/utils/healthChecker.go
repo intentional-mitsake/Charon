@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -35,13 +36,32 @@ func RunHealthCheck(ctx context.Context, upstreamPool *services.UpstreamPool, in
 				go func(url string) {
 					defer wg.Done()
 					healthy := HealthCheck(url)
+					failCount := atomic.LoadInt64(&u.SuccessiveFails)
+					passCount := atomic.LoadInt64(&u.SuccessivePasses)
 					if !healthy {
+						// if unhealthy, first incr successive fails before checking, or its stuck at 0
+						atomic.AddInt64(&u.SuccessiveFails, 1)
 						logger.Error("Upstream is not healthy", "url", url)
-						// not using atomic as need to change multiple vars and bool
-						mu.Lock()
-						u.Healthy = false
-						u.SuccessiveFails++
-						mu.Unlock()
+						if failCount >= 3 { // check if the fail count is greater than 3
+							logger.Error("Upstream is not healthy", "url", url, "Successive Fails", failCount)
+							// not using atomic as need to change multiple vars and bool
+							mu.Lock()
+							u.Healthy = false      // if crossed fail threshold, set healthy to false
+							u.SuccessiveFails++    // incr successive fails
+							u.SuccessivePasses = 0 // reset successive passes
+							mu.Unlock()
+						}
+					} else {
+						atomic.AddInt64(&u.SuccessivePasses, 1) // same as fail
+						logger.Info("Upstream responded", "url", url)
+						if passCount >= 3 { // check if the success count is greater than 3
+							logger.Info("Upstream is healthy", "url", url, "Successive Passes", passCount)
+							mu.Lock()
+							u.Healthy = true      // if healthy, set healthy to true
+							u.SuccessiveFails = 0 // reset successive fails
+							u.SuccessivePasses++  // incr successive passes
+							mu.Unlock()
+						}
 					}
 				}(localURL)
 			}
