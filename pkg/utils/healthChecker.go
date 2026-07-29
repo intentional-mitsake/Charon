@@ -41,7 +41,7 @@ func RunHealthCheck(ctx context.Context, upstreamPool *services.UpstreamPool, in
 					if !healthy {
 						// if unhealthy, first incr successive fails before checking, or its stuck at 0
 						atomic.AddInt64(&u.SuccessiveFails, 1)
-						logger.Error("Upstream is not healthy", "url", url)
+						//logger.Error("Upstream is not healthy", "url", url)
 						if failCount >= 3 { // check if the fail count is greater than 3
 							logger.Error("Upstream is not healthy", "url", url, "Successive Fails", failCount)
 							// not using atomic as need to change multiple vars and bool
@@ -53,7 +53,7 @@ func RunHealthCheck(ctx context.Context, upstreamPool *services.UpstreamPool, in
 						}
 					} else {
 						atomic.AddInt64(&u.SuccessivePasses, 1) // same as fail
-						logger.Info("Upstream responded", "url", url)
+						//logger.Info("Upstream responded", "url", url)
 						if passCount >= 3 { // check if the success count is greater than 3
 							logger.Info("Upstream is healthy", "url", url, "Successive Passes", passCount)
 							mu.Lock()
@@ -82,7 +82,8 @@ func HealthCheck(url string) bool {
 	res, err := client.Get(url) // GET /health
 	if err != nil {
 		// if the request fails, print the error
-		logger.Error("Error while performing health check", "error", err.Error())
+		// this happens if either the server is down(cant connect, doesnt respond) or it takes more than 2 seconds to respond
+		logger.Error("Upstream did not respond | Failed to connect", "error", err.Error())
 		return false
 	}
 	defer res.Body.Close() // close the response body
