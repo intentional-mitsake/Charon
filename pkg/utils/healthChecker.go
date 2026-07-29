@@ -30,7 +30,7 @@ func RunHealthCheck(ctx context.Context, upstreamPool *services.UpstreamPool, in
 			wg := &sync.WaitGroup{}
 			mu := &sync.Mutex{}
 			for _, u := range upstreamPool.Upstreams {
-				localURL := u.Address + "/health"
+				localURL := "http://" + u.Address + "/health"
 				wg.Add(1)
 				go func(url string) {
 					defer wg.Done()
