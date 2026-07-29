@@ -10,15 +10,17 @@ import (
 
 // for least connections algo
 type Upstream struct {
-	Address     string // 127.0.0.1:8848
-	ActiveConns int64  // 0, should never access this directly, cuz it can be changed concurrently
-	Healthy     bool   // fro health checks later
+	Address         string // 127.0.0.1:8848
+	ActiveConns     int64  // 0, should never access this directly, cuz it can be changed concurrently
+	Healthy         bool   // fro health checks later
+	SuccessiveFails int64  // to calc consecutive fails to determine health
 }
 
 func CreateUpstream(address string) Upstream {
 	return Upstream{Address: address,
-		ActiveConns: 0,
-		Healthy:     true,
+		ActiveConns:     0,
+		Healthy:         true,
+		SuccessiveFails: 0,
 	}
 }
 
@@ -51,9 +53,10 @@ func InitUpstreamPool() *UpstreamPool {
 	pool := &UpstreamPool{}
 	for _, addr := range strings.Split(addrs, ",") {
 		pool.Upstreams = append(pool.Upstreams, &Upstream{
-			Address:     strings.TrimSpace(addr),
-			ActiveConns: 0,
-			Healthy:     true,
+			Address:         strings.TrimSpace(addr),
+			ActiveConns:     0,
+			Healthy:         true,
+			SuccessiveFails: 0,
 		})
 	}
 	return pool
