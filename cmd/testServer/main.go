@@ -40,6 +40,10 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Connection", "close")
 		w.WriteHeader(http.StatusOK) // HTTP 200 OK
+
+		// for testing unhealthy if route
+		//time.Sleep(3 * time.Second) // time out is 2 seconds
+
 		logger.Info("Responded to health check request")
 	})
 	logger.Info("Started listening", "PORT", upstreamPort)
