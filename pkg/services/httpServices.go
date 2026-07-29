@@ -144,12 +144,10 @@ func ParseResponse(conn net.Conn) (*config.HTTPResponse, error) {
 	if err != nil {
 		return &config.HTTPResponse{}, err
 	}
-
+	// allocating exact amount of memory
 	bodyBytes := make([]byte, contentLength)
+	// io.ReadFull reads exactly contentLength bytes from the reader
 	_, err = io.ReadFull(reader, bodyBytes)
-	if err != nil {
-		return &config.HTTPResponse{}, err
-	}
 	if err != nil {
 		return &config.HTTPResponse{}, err
 	}
