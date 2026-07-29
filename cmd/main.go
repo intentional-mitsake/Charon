@@ -2,9 +2,12 @@ package main
 
 import (
 	"charon/pkg/services"
+	"charon/pkg/utils"
+	"context"
 	"log/slog"
 	"net"
 	"os"
+	"time"
 )
 
 // ref from: medium @diasmashikovnasa
@@ -31,7 +34,19 @@ func main() {
 	if upstreamPool == nil {
 		logger.Error("Error initializing upstream pool")
 		os.Exit(1)
+
 	}
+
+	// Health check setup
+	// diff types of context, context.Background returns empty context, no cancellation, no value
+	// pretty much just a placeholder context that is used for signaling when the main function is done
+	// as its only done when this function returns
+	ctx := context.Background()
+	// checked the desc and it returns <-chan struct{}, goat for signaling
+	defer ctx.Done() // close the context when the main function returns
+
+	utils.RunHealthCheck(ctx, upstreamPool, 5*time.Second)
+
 	// btw no waitgroups here cuz no need to wait for all connections to finish
 	// each go routine(connection) is indep and doesnt need to wait for others, its not concurrent, its parallel
 	for {
