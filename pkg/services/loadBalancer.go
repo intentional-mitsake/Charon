@@ -17,7 +17,12 @@ type Upstream struct {
 	SuccessiveFails  int64         // to calc consecutive fails to determine health
 	SuccessivePasses int64         // to calc consecutive passes
 	CheckInterval    time.Duration // for failure backoff
-	Mu               sync.RWMutex  // will prob use mu for all except single acccess things now
+	// also prev way of using mu by creating a new one for each ticker trigger was heavily flawed
+	// it was creating a new mu for each run, then using that same mu for each upstream in the for loop
+	// instead of that, now, each upstream has its own mu to use whenever needed,
+	// same instance of mutex transfer thruout the whole project by passing upstream as a pointer everywehre
+	// is the right way
+	Mu sync.RWMutex // will prob use mu for all except single acccess things now
 }
 
 func CreateUpstream(address string) Upstream {
