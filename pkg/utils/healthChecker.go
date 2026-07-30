@@ -32,7 +32,8 @@ func RunHealthCheck(ctx context.Context, upstreamPool *services.UpstreamPool, in
 			for _, u := range upstreamPool.Upstreams {
 				localURL := "http://" + u.Address + "/health"
 				wg.Add(1)
-				go func(url string) {
+				// local var capture bug, basically cuz its a loop, by the time the loop finishes, the var can be already out of scope
+				go func(u *services.Upstream, url string) {
 					defer wg.Done()
 					healthy := HealthCheck(url)
 					// better way is to just read the latest value
@@ -70,7 +71,7 @@ func RunHealthCheck(ctx context.Context, upstreamPool *services.UpstreamPool, in
 						}
 						mu.Unlock()
 					}
-				}(localURL)
+				}(u, localURL) // pass the local upstream and the url
 			}
 			wg.Wait()
 		case <-ctx.Done(): // if the context is done, stop the loop
