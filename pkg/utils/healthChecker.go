@@ -63,6 +63,7 @@ func RunHealthCheck(ctx context.Context, upstreamPool *services.UpstreamPool, in
 						// if not getting checked(false), check it(chnge to true), return true
 						// if getting checked(true) do nothing, return false
 						// hence if false--> its getting checked
+						logger.Info("Skipping: upstream already getting checked", "address", u.Address)
 						return
 					}
 					// if here, means it was not getting checked(already set to TRUE), so check it AND set it to FALSE once done
