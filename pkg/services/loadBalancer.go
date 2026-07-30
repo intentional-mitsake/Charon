@@ -2,6 +2,7 @@ package services
 
 import (
 	"math"
+	"net"
 	"os"
 	"strings"
 	"sync"
@@ -23,6 +24,9 @@ type Upstream struct {
 	// same instance of mutex transfer thruout the whole project by passing upstream as a pointer everywehre
 	// is the right way
 	Mu sync.RWMutex // will prob use mu for all except single acccess things now
+	// instead of dialing a new tcp conn for each, each upstream will have a buffer channel
+	// this channel will have a collection of net.Conn, upstream can pull from here instead
+	Pool chan net.Conn
 }
 
 func CreateUpstream(address string) Upstream {
@@ -145,4 +149,8 @@ func (u *Upstream) PassiveHealthUpdate(pass bool) {
 			logger.Info("Marked upstream unhealthy", "Upstream", u.Address)
 		}
 	}
+}
+
+func (u *Upstream) PullConn() {
+
 }

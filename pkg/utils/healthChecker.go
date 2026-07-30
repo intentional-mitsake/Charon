@@ -42,6 +42,7 @@ func RunHealthCheck(ctx context.Context, upstreamPool *services.UpstreamPool, in
 					u.Mu.Lock()
 					delay := u.CheckInterval
 					u.Mu.Unlock()
+					logger.Info("Exponential delay with jitter:", "delay", delay.String())
 					time.Sleep(delay)
 
 					// check health after delay
