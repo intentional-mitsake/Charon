@@ -46,8 +46,8 @@ func RunHealthCheck(ctx context.Context, upstreamPool *services.UpstreamPool, in
 							logger.Error("Upstream is not healthy", "url", url, "Successive Fails", failCount)
 							// not using atomic as need to change multiple vars and bool
 							mu.Lock()
-							u.Healthy = false      // if crossed fail threshold, set healthy to false
-							u.SuccessiveFails++    // incr successive fails
+							u.Healthy = false // if crossed fail threshold, set healthy to false
+							//u.SuccessiveFails++    // incr successive fails
 							u.SuccessivePasses = 0 // reset successive passes
 							mu.Unlock()
 						}
@@ -59,7 +59,7 @@ func RunHealthCheck(ctx context.Context, upstreamPool *services.UpstreamPool, in
 							mu.Lock()
 							u.Healthy = true      // if healthy, set healthy to true
 							u.SuccessiveFails = 0 // reset successive fails
-							u.SuccessivePasses++  // incr successive passes
+							//u.SuccessivePasses++  // incr successive passes
 							mu.Unlock()
 						}
 					}
