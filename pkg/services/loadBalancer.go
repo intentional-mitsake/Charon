@@ -6,15 +6,18 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // for least connections algo
 type Upstream struct {
-	Address          string // 127.0.0.1:8848
-	ActiveConns      int64  // 0, should never access this directly, cuz it can be changed concurrently
-	Healthy          bool   // fro health checks later
-	SuccessiveFails  int64  // to calc consecutive fails to determine health
-	SuccessivePasses int64  // to calc consecutive passes
+	Address          string        // 127.0.0.1:8848
+	ActiveConns      int64         // 0, should never access this directly, cuz it can be changed concurrently
+	Healthy          bool          // fro health checks later
+	SuccessiveFails  int64         // to calc consecutive fails to determine health
+	SuccessivePasses int64         // to calc consecutive passes
+	CheckInterval    time.Duration // for failure backoff
+	mu               sync.RWMutex  // will prob use mu for all except single acccess things now
 }
 
 func CreateUpstream(address string) Upstream {
@@ -23,6 +26,7 @@ func CreateUpstream(address string) Upstream {
 		Healthy:          true,
 		SuccessiveFails:  0,
 		SuccessivePasses: 0,
+		CheckInterval:    1 * time.Second,
 	}
 }
 
@@ -60,6 +64,7 @@ func InitUpstreamPool() *UpstreamPool {
 			Healthy:          true,
 			SuccessiveFails:  0,
 			SuccessivePasses: 0,
+			CheckInterval:    1 * time.Second,
 		})
 	}
 	return pool
@@ -114,25 +119,21 @@ func (p *UpstreamPool) SelectUpstream() *Upstream {
 }
 
 func (u *Upstream) PassiveHealthUpdate(pass bool) {
-	// bool read from health check, so cleaner to use mutex
-	mu := &sync.Mutex{}
+	u.mu.Lock() // lock the upstream to prevent concurrent access
+	defer u.mu.Unlock()
 	if pass { // status code was 2xx
-		mu.Lock()
 		u.SuccessiveFails = 0
 		u.SuccessivePasses++
 		if u.SuccessivePasses > 2 && !u.Healthy {
 			u.Healthy = true // restore
 			logger.Info("Restored upstream", "Upstream", u.Address)
 		}
-		mu.Unlock()
 	} else {
-		mu.Lock()
 		u.SuccessiveFails++ // status code was not 2xx, fail
 		u.SuccessivePasses = 0
 		if u.SuccessiveFails > 3 && u.Healthy {
 			u.Healthy = false // mark unhealthy
 			logger.Info("Marked upstream unhealthy", "Upstream", u.Address)
 		}
-		mu.Unlock()
 	}
 }
