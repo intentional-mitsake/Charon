@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
-	"sync"
 	"time"
 )
 
@@ -30,13 +29,22 @@ func RunHealthCheck(ctx context.Context, upstreamPool *services.UpstreamPool, in
 		// if the ticker ticks .i.e every interval this runs
 		case <-ticker.C:
 			logger.Info("Running health check")
-			wg := &sync.WaitGroup{}
+
+			// the problem after adding delay is that all the connections will be checked at the same time
+			// so if one connection has failed multiple times, its delay accumulates
+			// when healthchekc runs, it fires multi goroutines for each upstream
+			// BUT theres a waitgroup that waits for all the goroutines to finish
+			// hence due to delay of one upstream, the whole ticker is blocked till it finishes
+			// meaning the whole RunHealthCheck func is delayed, so all upstreams get chekcd after the delay
+			// before it was here to ensure all upstreams get checked before the ticker ticks again(blocked the ticker)
+			// but now the soln is to remove it and make the goroutines run indep of each other and not block the ticker
+			//wg := &sync.WaitGroup{}
 			for _, u := range upstreamPool.Upstreams {
 				localURL := "http://" + u.Address + "/health"
-				wg.Add(1)
+				//wg.Add(1)
 				// local var capture bug, basically cuz its a loop, by the time the loop finishes, the var can be already out of scope
 				go func(u *services.Upstream, url string) {
-					defer wg.Done()
+					//defer wg.Done()
 
 					// delay before checking health again
 					u.Mu.Lock()
@@ -87,7 +95,7 @@ func RunHealthCheck(ctx context.Context, upstreamPool *services.UpstreamPool, in
 					}
 				}(u, localURL) // pass the local upstream and the url
 			}
-			wg.Wait()
+			//wg.Wait()
 		case <-ctx.Done(): // if the context is done, stop the loop
 			return
 		}
