@@ -4,6 +4,7 @@ import (
 	"charon/pkg/services"
 	"context"
 	"log/slog"
+	"math/rand"
 	"net/http"
 	"os"
 	"sync"
@@ -13,6 +14,8 @@ import (
 var logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
 
 // context is used for signaling
+// pointer passing of upstream pool and upstream is very imp
+// makes sure mutex dont break
 func RunHealthCheck(ctx context.Context, upstreamPool *services.UpstreamPool, interval time.Duration) {
 	ticker := time.NewTicker(interval) // create a ticker that ticks every intervalseconds
 	defer ticker.Stop()                // stop the ticker when the function returns
@@ -28,13 +31,20 @@ func RunHealthCheck(ctx context.Context, upstreamPool *services.UpstreamPool, in
 		case <-ticker.C:
 			logger.Info("Running health check")
 			wg := &sync.WaitGroup{}
-			mu := &sync.Mutex{}
 			for _, u := range upstreamPool.Upstreams {
 				localURL := "http://" + u.Address + "/health"
 				wg.Add(1)
 				// local var capture bug, basically cuz its a loop, by the time the loop finishes, the var can be already out of scope
 				go func(u *services.Upstream, url string) {
 					defer wg.Done()
+
+					// delay before checking health again
+					u.Mu.Lock()
+					delay := u.CheckInterval
+					u.Mu.Unlock()
+					time.Sleep(delay)
+
+					// check health after delay
 					healthy := HealthCheck(url)
 					// better way is to just read the latest value
 					// AND the BEST way would be to use mutex for the whole thing
@@ -44,24 +54,27 @@ func RunHealthCheck(ctx context.Context, upstreamPool *services.UpstreamPool, in
 						// INSTEAD of mixing atomic and mutex, just gonna use mutex for the whole op
 						// is slower than atomic, but not that bad
 						// not using atomic as need to change multiple vars and bool
-						mu.Lock()
+						u.Mu.Lock()
 						// if unhealthy, first incr successive fails before checking, or its stuck at 0
 						//failCount := atomic.AddInt64(&u.SuccessiveFails, 1) // updates AND returns the new value
 						//atomic.StoreInt64(&u.SuccessivePasses, 0)           // reset
-						u.SuccessiveFails++    // incr successive fails
-						u.SuccessivePasses = 0 // reset successive passes
+						u.SuccessiveFails++                               // incr successive fails
+						u.SuccessivePasses = 0                            // reset successive passes
+						jitterV := time.Duration(rand.Intn(3) + 1)        // random jitter between 1 and 3 seconds, Intn returns [0, n-1]
+						u.CheckInterval = (u.CheckInterval * 2) + jitterV // exponential backoff
 						//logger.Error("Upstream is not healthy", "url", url)
 						if u.SuccessiveFails >= 3 { // check if the fail count is greater than 3
 							logger.Error("Upstream is not healthy", "url", url, "Successive Fails", u.SuccessiveFails)
 							u.Healthy = false // if crossed fail threshold, set healthy to false
 						}
-						mu.Unlock()
+						u.Mu.Unlock()
 					} else {
-						mu.Lock()
+						u.Mu.Lock()
 						//passCount := atomic.AddInt64(&u.SuccessivePasses, 1) // same as fail
 						//atomic.StoreInt64(&u.SuccessiveFails, 0)
-						u.SuccessivePasses++  // incr successive passes
-						u.SuccessiveFails = 0 // reset successive fails
+						u.SuccessivePasses++              // incr successive passes
+						u.SuccessiveFails = 0             // reset successive fails
+						u.CheckInterval = 1 * time.Second // reset check interval
 						//logger.Info("Upstream responded", "url", url)
 						if u.SuccessivePasses >= 2 { // check if the success count is greater than 2
 							logger.Info("Upstream is healthy", "url", url, "Successive Passes", u.SuccessivePasses)
@@ -69,7 +82,7 @@ func RunHealthCheck(ctx context.Context, upstreamPool *services.UpstreamPool, in
 							//u.SuccessiveFails = 0 // reset successive fails
 							//u.SuccessivePasses++  // incr successive passes
 						}
-						mu.Unlock()
+						u.Mu.Unlock()
 					}
 				}(u, localURL) // pass the local upstream and the url
 			}

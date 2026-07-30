@@ -17,7 +17,7 @@ type Upstream struct {
 	SuccessiveFails  int64         // to calc consecutive fails to determine health
 	SuccessivePasses int64         // to calc consecutive passes
 	CheckInterval    time.Duration // for failure backoff
-	mu               sync.RWMutex  // will prob use mu for all except single acccess things now
+	Mu               sync.RWMutex  // will prob use mu for all except single acccess things now
 }
 
 func CreateUpstream(address string) Upstream {
@@ -44,6 +44,7 @@ func (u *Upstream) Release() {
 }
 
 type UpstreamPool struct {
+	// pointer here makes sure mutex doesnt break, it doesnt get copied and always uses the same mutex instance
 	Upstreams         []*Upstream // pointer cuz if use slice, the swap problem happens
 	RoundRobinCounter int64       // for fallback
 	// Mutex doesnt allow concqurrent access, go routines wait
@@ -81,7 +82,10 @@ func (p *UpstreamPool) SelectUpstream() *Upstream {
 	//var selectedIndx = math.MaxInt       // to check whether any upstream is healthy(if no change, no select)
 	var selectOptions []int
 	for indx, u := range p.Upstreams {
-		if !u.Healthy {
+		u.Mu.RLock() // can be read concurrentlyl, but cant be changed here
+		healthy := u.Healthy
+		u.Mu.RUnlock()
+		if !healthy {
 			continue
 		}
 		conns := atomic.LoadInt64(&u.ActiveConns) // never directlu
@@ -119,8 +123,8 @@ func (p *UpstreamPool) SelectUpstream() *Upstream {
 }
 
 func (u *Upstream) PassiveHealthUpdate(pass bool) {
-	u.mu.Lock() // lock the upstream to prevent concurrent access
-	defer u.mu.Unlock()
+	u.Mu.Lock() // lock the upstream to prevent concurrent access
+	defer u.Mu.Unlock()
 	if pass { // status code was 2xx
 		u.SuccessiveFails = 0
 		u.SuccessivePasses++
