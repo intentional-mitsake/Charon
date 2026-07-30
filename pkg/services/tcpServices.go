@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"strconv"
 	"time"
 
 	_ "github.com/google/uuid"
@@ -72,6 +73,18 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool) {
 		clientConn.Write([]byte("HTTP/1.1 502 Failed to parse response\r\n\r\n"))
 		return
 	}
+
+	// passive health check
+	errCode := strconv.Itoa(httpResponse.StatusCode)
+	if len(errCode) == 3 {
+		errCodeCategory := string(errCode[0]) + "XX" // 2xx, 3xx, 4xx, 5xx
+		if errCodeCategory == "5XX" {
+			upstream.PassiveHealthUpdate(false)
+		} else {
+			upstream.PassiveHealthUpdate(true)
+		}
+	}
+
 	response := httpResponse.Response // HTTP/1.1 200 OK\r\n --> already has \r\n, adding another \r\n wuld signal end of headers
 	for key, val := range httpResponse.Headers {
 		response += fmt.Sprintf("%s: %s\r\n", key, val) // Content-Type: text/html\r\n
