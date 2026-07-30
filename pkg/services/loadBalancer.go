@@ -112,3 +112,27 @@ func (p *UpstreamPool) SelectUpstream() *Upstream {
 	logger.Info("Selected upstream", "Upstream", p.Upstreams[selectedIndx].Address, "Connections", leastConn)
 	return p.Upstreams[selectedIndx]
 }
+
+func (u *Upstream) PassiveHealthUpdate(pass bool) {
+	// bool read from health check, so cleaner to use mutex
+	mu := &sync.Mutex{}
+	if pass { // status code was 2xx
+		mu.Lock()
+		u.SuccessiveFails = 0
+		u.SuccessivePasses++
+		if u.SuccessivePasses > 2 && !u.Healthy {
+			u.Healthy = true // restore
+			logger.Info("Restored upstream", "Upstream", u.Address)
+		}
+		mu.Unlock()
+	} else {
+		mu.Lock()
+		u.SuccessiveFails++ // status code was not 2xx, fail
+		u.SuccessivePasses = 0
+		if u.SuccessiveFails > 3 && u.Healthy {
+			u.Healthy = false // mark unhealthy
+			logger.Info("Marked upstream unhealthy", "Upstream", u.Address)
+		}
+		mu.Unlock()
+	}
+}
