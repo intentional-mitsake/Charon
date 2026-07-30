@@ -45,7 +45,9 @@ func main() {
 	// checked the desc and it returns <-chan struct{}, goat for signaling
 	defer ctx.Done() // close the context when the main function returns
 
-	utils.RunHealthCheck(ctx, upstreamPool, 5*time.Second)
+	// if run as a normal func without goroutine, it blocks the main func from exiting
+	// AND pauses execution at this line, meaning for loop accept connections will never run
+	go utils.RunHealthCheck(ctx, upstreamPool, 5*time.Second)
 
 	// btw no waitgroups here cuz no need to wait for all connections to finish
 	// each go routine(connection) is indep and doesnt need to wait for others, its not concurrent, its parallel
