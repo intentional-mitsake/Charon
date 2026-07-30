@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -36,32 +35,40 @@ func RunHealthCheck(ctx context.Context, upstreamPool *services.UpstreamPool, in
 				go func(url string) {
 					defer wg.Done()
 					healthy := HealthCheck(url)
-					failCount := atomic.LoadInt64(&u.SuccessiveFails)
-					passCount := atomic.LoadInt64(&u.SuccessivePasses)
+					// better way is to just read the latest value
+					// AND the BEST way would be to use mutex for the whole thing
+					//failCount := atomic.LoadInt64(&u.SuccessiveFails)
+					//passCount := atomic.LoadInt64(&u.SuccessivePasses)
 					if !healthy {
+						// INSTEAD of mixing atomic and mutex, just gonna use mutex for the whole op
+						// is slower than atomic, but not that bad
+						// not using atomic as need to change multiple vars and bool
+						mu.Lock()
 						// if unhealthy, first incr successive fails before checking, or its stuck at 0
-						atomic.AddInt64(&u.SuccessiveFails, 1)
+						//failCount := atomic.AddInt64(&u.SuccessiveFails, 1) // updates AND returns the new value
+						//atomic.StoreInt64(&u.SuccessivePasses, 0)           // reset
+						u.SuccessiveFails++    // incr successive fails
+						u.SuccessivePasses = 0 // reset successive passes
 						//logger.Error("Upstream is not healthy", "url", url)
-						if failCount >= 3 { // check if the fail count is greater than 3
-							logger.Error("Upstream is not healthy", "url", url, "Successive Fails", failCount)
-							// not using atomic as need to change multiple vars and bool
-							mu.Lock()
+						if u.SuccessiveFails >= 3 { // check if the fail count is greater than 3
+							logger.Error("Upstream is not healthy", "url", url, "Successive Fails", u.SuccessiveFails)
 							u.Healthy = false // if crossed fail threshold, set healthy to false
-							//u.SuccessiveFails++    // incr successive fails
-							u.SuccessivePasses = 0 // reset successive passes
-							mu.Unlock()
 						}
+						mu.Unlock()
 					} else {
-						atomic.AddInt64(&u.SuccessivePasses, 1) // same as fail
+						mu.Lock()
+						//passCount := atomic.AddInt64(&u.SuccessivePasses, 1) // same as fail
+						//atomic.StoreInt64(&u.SuccessiveFails, 0)
+						u.SuccessivePasses++  // incr successive passes
+						u.SuccessiveFails = 0 // reset successive fails
 						//logger.Info("Upstream responded", "url", url)
-						if passCount >= 3 { // check if the success count is greater than 3
-							logger.Info("Upstream is healthy", "url", url, "Successive Passes", passCount)
-							mu.Lock()
-							u.Healthy = true      // if healthy, set healthy to true
-							u.SuccessiveFails = 0 // reset successive fails
+						if u.SuccessivePasses >= 2 { // check if the success count is greater than 2
+							logger.Info("Upstream is healthy", "url", url, "Successive Passes", u.SuccessivePasses)
+							u.Healthy = true // if healthy, set healthy to true
+							//u.SuccessiveFails = 0 // reset successive fails
 							//u.SuccessivePasses++  // incr successive passes
-							mu.Unlock()
 						}
+						mu.Unlock()
 					}
 				}(localURL)
 			}
