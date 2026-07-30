@@ -27,6 +27,9 @@ type Upstream struct {
 	// instead of dialing a new tcp conn for each, each upstream will have a buffer channel
 	// this channel will have a collection of net.Conn, upstream can pull from here instead
 	Pool chan net.Conn
+
+	// for the check delay problem after wg
+	BeingChecked atomic.Bool // found out theres a way to use atomic for bools
 }
 
 func CreateUpstream(address string) Upstream {

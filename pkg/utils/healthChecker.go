@@ -39,11 +39,34 @@ func RunHealthCheck(ctx context.Context, upstreamPool *services.UpstreamPool, in
 			// before it was here to ensure all upstreams get checked before the ticker ticks again(blocked the ticker)
 			// but now the soln is to remove it and make the goroutines run indep of each other and not block the ticker
 			//wg := &sync.WaitGroup{}
+
+			// NOTE: after the wg problem fixed, theres another prob, found in logs
+			// upstream fails, delay becomes say 17.09, now no block any more, good,
+			// BUT next tick is in 15 seconds, health check runs, for ohter servers delay is 1s so they get checked
+			// for the failed one, delay again becomes 17.09 because the previous one wiht delay 17.09 is still running
+			// hence two chekcs for the single failed upstream is happening at the same time
+			// not inherently bad, but still a problem cuz check happens each 15 sec
+			// if delay becomes smth like 500 or more, it will fire many many checks for that single failed upstream
+			// Whats the sole? the most obvious ans: check if the upstream is getting checked
+			// if it is, skip it, if not, check it
+			// will use a flag in the upstream struct to check if the upstream is getting checked
+
 			for _, u := range upstreamPool.Upstreams {
 				localURL := "http://" + u.Address + "/health"
 				//wg.Add(1)
 				// local var capture bug, basically cuz its a loop, by the time the loop finishes, the var can be already out of scope
 				go func(u *services.Upstream, url string) {
+					// check if its getting checked, if it is, skip it, if not, check it
+					// so atomic.bool has 4 methods: load, store, swap, compareAndSwap(old, new)
+					// this one checks curr val, if its old val change it to new val returns TRUE, if not retruns FALSE
+					if !u.BeingChecked.CompareAndSwap(false, true) {
+						// if not getting checked(false), check it(chnge to true), return true
+						// if getting checked(true) do nothing, return false
+						// hence if false--> its getting checked
+						return
+					}
+					// if here, means it was not getting checked(already set to TRUE), so check it AND set it to FALSE once done
+					defer u.BeingChecked.Store(false)
 					//defer wg.Done()
 
 					// delay before checking health again
