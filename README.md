@@ -2,61 +2,51 @@
 
 A reverse proxy and load balancer built from scratch in Go.
 
-Charon sits in front of your upstream servers, routes traffic intelligently, and keeps requests moving when things go wrong — without any manual intervention. It's built to be understood completely, from the raw TCP connection up.
+Charon sits in front of your upstream servers, routes traffic intelligently, and keeps requests moving when things go wrong — without any manual intervention. Built to be understood completely, from the raw TCP connection up.
 
 ---
 
 ## Goals
 
 - Handle real HTTP and HTTPS traffic across a pool of upstream servers
-- Route using least connections so load distributes naturally, not mechanically
+- Distribute load using least connections so busy servers naturally get fewer requests
 - Detect and recover from upstream failures automatically
 - Fail fast when an upstream is down rather than letting requests pile up
 - Rate limit at the edge before bad traffic reaches your services
-- Give full visibility into what's happening — logs, metrics, and a live dashboard
-- Accept configuration changes without restarting
+- Give full visibility into what's happening through logs, metrics, and a live dashboard
+- Accept config changes without restarting
 
 ---
 
-## What's built
+## How it works
 
-### Phase 1 — TCP Proxy & HTTP Parsing ✓
+### TCP & HTTP
 
-Charon accepts raw TCP connections, parses HTTP/1.1 requests at the wire level (method, path, version, headers, body), and forwards them to an upstream server. The response is parsed and streamed back to the client.
+Charon accepts raw TCP connections and parses HTTP/1.1 requests at the wire level — method, path, version, headers, body — with no standard library HTTP handling. Responses are parsed and streamed back to the client the same way. Every request gets `X-Forwarded-For` injected with the real client IP, and everything is logged: method, path, status, latency.
 
-- TCP listener on a configurable port
-- HTTP request and response parser built on `bufio` — no standard library HTTP handling
-- `X-Forwarded-For` header injection with the real client IP
-- Full request logging: method, path, status code, latency
+### Load balancing
 
-### Phase 2 — Least Connections Load Balancing ✓
+Requests go to whichever upstream has the fewest in-flight connections at that moment. Under skewed load, slow servers naturally attract fewer new requests without any explicit tuning. Ties are broken by round-robin.
 
-Traffic is distributed across a pool of upstream servers using the least connections algorithm — requests go to whichever upstream has the fewest in-flight connections at that moment. Under skewed load, slow servers naturally receive fewer new requests without any explicit configuration.
+The pool is protected by a `sync.RWMutex` so multiple goroutines can select an upstream simultaneously — writes (adding or removing a server) are exclusive, reads aren't. Each upstream tracks its active connection count with `sync/atomic`, and a `defer upstream.Release()` ensures the counter always decrements no matter how the handler exits.
 
-- Thread-safe active connection counter per upstream using `sync/atomic`
-- `sync.RWMutex` on the pool slice — multiple goroutines can select simultaneously, writes are exclusive
-- Round-robin tiebreaker when multiple upstreams are tied on connection count
-- `defer upstream.Release()` ensures the counter always decrements regardless of how the handler exits
+### Health checking & failover
 
-### Phase 3 — Health Checking & Automatic Failover ✓
+Upstreams are monitored two ways.
 
-Unhealthy upstreams are detected and removed from rotation automatically. Recovery is detected and they're restored.
+**Active checks** run on a background goroutine — a `GET /health` to each upstream on a configurable interval. There's hysteresis built in: 3 consecutive failures to mark an upstream unhealthy, 2 consecutive successes to restore it. This prevents a briefly-flaky server from being yanked out and put back in rotation repeatedly.
 
-**Active health checks** — a background goroutine sends `GET /health` to each upstream on a configurable interval. Results go through a threshold: 3 consecutive failures to mark unhealthy, 2 consecutive successes to restore. This hysteresis prevents flapping.
+When an upstream fails, the check interval backs off exponentially (1s → 2s → 4s → ... capped at 64s), with random jitter added to each delay. This matters in a fleet: without jitter, multiple proxy instances all retry at the same moment and can hammer a recovering server all at once.
 
-**Exponential backoff with jitter** — when an upstream fails, the check interval doubles each time (1s → 2s → 4s → ... → 64s cap). Random jitter is added to each delay so multiple proxies in a fleet don't retry in lockstep and cause a thundering herd against a recovering server.
+**Passive checks** run on real traffic. 5xx responses and connection errors update the same health counters as active checks, so a degraded upstream can be pulled from rotation immediately — no waiting for the next scheduled probe.
 
-**Passive health checks** — real traffic is also monitored. 5xx responses and connection errors on actual requests update the same health counters, so an upstream can be marked unhealthy from real traffic without waiting for a synthetic check.
-
-**Per-upstream mutex** — all health state (counters, healthy flag, check interval) is protected by a mutex on each `Upstream` struct. Goroutines for different upstreams don't contend with each other.
+All health state per upstream (counters, healthy flag, check interval) lives behind its own mutex, so goroutines managing different upstreams don't contend with each other.
 
 ---
 
-## Upcoming
+## What's next
 
-| Phase | What |
-|-------|------|
-| 4 | Connection pooling — reuse TCP connections to upstreams, stale connection detection |
+Connection pooling — reuse TCP connections to upstreams rather than opening a new one per request, with stale connection detection.
 
 ---
 
@@ -65,8 +55,9 @@ Unhealthy upstreams are detected and removed from rotation automatically. Recove
 ```bash
 # start proxy + 3 backends
 docker compose up
+```
 
-# configure via environment variables
+```bash
 PORT=80                              # proxy listen port
 UPSTREAM_ADDRS=host:port,host:port   # comma-separated upstream addresses
 HC_INTERVAL=15s                      # health check interval
