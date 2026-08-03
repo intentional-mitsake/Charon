@@ -43,7 +43,7 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool) {
 	// 2. already got the tcp conn from client to the proxy(main.go)
 	// now open another conn to the upstream server(actual backend server that processes the requests)
 	// net.Dial creates a tcp connection as a client to the given address(upstreamAddr/backend server)
-	upstreamConn, err := net.Dial("tcp", upstream.Address)
+	/* upstreamConn, err := net.Dial("tcp", upstream.Address)
 	if err != nil {
 		logger.Error("Error connecting to upstream!", "error", err.Error())
 		// 503 service unavailable
@@ -52,7 +52,15 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool) {
 	}
 	defer upstreamConn.Close()
 	// need to use the same reader for upstream cuz ForwardRequest and ParseResponse uses it
-	//
+	*/
+	upstreamConn, err := upstream.PullConn()
+	if err != nil {
+		logger.Error("Error connecting to upstream!", "error", err.Error())
+		// 503 service unavailable
+		clientConn.Write([]byte("HTTP/1.1 503 Failed to connect to Upstream\r\n\r\n"))
+		return // exit if cnat connect ot the upstream
+	}
+	defer upstreamConn.Close() // close the upstream conn directly
 
 	// 3. send and receive data to and fro the proxy and the upstream server
 

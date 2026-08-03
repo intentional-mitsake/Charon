@@ -156,6 +156,55 @@ func (u *Upstream) PassiveHealthUpdate(pass bool) {
 	}
 }
 
-func (u *Upstream) PullConn() {
+// if is synchronous and immediate, it checks the lcoal mem, can lead to ToCTou issues cuz if mutli threads concurrent access
+// select solves thsi with atomicity, it is asynchronous and threadsafe cuz:
+// atoimicity means check and action happens as a single operation(GO does this behind the scens auto for select)
+// basically: if cannot handle concurrent stuff(ToCToU issue), its immediate and only checks local mem
+// select is atomic(check and use happens as one op), async and can be both blocking and non-blocking and checks the real time state
+func (u *Upstream) PullConn() (net.Conn, error) {
+	// chan are already threadsafe, so no need for mutex
 
+	// <-chanVar : read only channel, can only read from it, not write to it
+	// chan<-var : write only channel, can only write to it, not read from it
+	//conn := <-u.Pool : this is a blocking statement
+	// chan blocks the whole func till it recieves a value, it doesnt send a nil
+	// just waits forever till it recieves a value, so usig if is bad, select is the way
+	//if conn == nil {
+	// if is synchronous and immediate, it chechks local mem,
+	// meaning it doesnt wait for the chan to recieve a val, no other thread/goroutine is involved
+	// it is purely synchronous, cant use for chan
+	// select is fit for chan cause it blocks the entire goroutine till one of the cases is true
+	// it is asynchronous and can block or not block(if therss a default case)
+	// here the select is non-blocking, if there is no conn in the pool, it will immediately go to the default case
+	// without default, it would be blocking, i.e it would wait for a conn to be added to the pool
+	select {
+	case conn := <-u.Pool:
+		return conn, nil
+	default:
+		// already have an address and ohter info abt the upstream in the struct
+		// only need to dial an actual connection now, before it was done in tcpServices.go
+		logger.Info("No connections available in the pool, dialing upstream", "Upstream", u.Address)
+		conn, err := net.Dial("tcp", u.Address)
+		if err != nil {
+			return nil, err
+		}
+		return conn, nil
+	}
+}
+
+func (u *Upstream) PushConn(conn net.Conn) {
+	// similar to the use for pull
+	// here it tries to push the conn into the chan
+	// if it fails, instead fo blocking, .ie waiting till there is space in pool to push, it goes to default immediately
+	// without defalut, this wuld wait(block the goroutine) till there is space
+	select {
+	case u.Pool <- conn:
+		// this will happen if the pool is not full
+		// the conn will be added to the pool
+		logger.Info("Added connection to the pool", "Upstream", u.Address)
+	default:
+		// else this will happen if the pool is full
+		logger.Info("No space in the pool, closing connection", "Upstream", u.Address)
+		conn.Close()
+	}
 }
