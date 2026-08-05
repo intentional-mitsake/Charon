@@ -60,7 +60,7 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool) {
 		clientConn.Write([]byte("HTTP/1.1 503 Failed to connect to Upstream\r\n\r\n"))
 		return // exit if cnat connect ot the upstream
 	}
-	defer upstreamConn.Close() // close the upstream conn directly
+	//defer upstreamConn.Close() // close the upstream conn directly
 
 	// 3. send and receive data to and fro the proxy and the upstream server
 
@@ -91,6 +91,14 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool) {
 		} else {
 			upstream.PassiveHealthUpdate(true)
 		}
+	}
+
+	keepAlive := httpResponse.Headers["Connection"]
+	if keepAlive == "keep-alive" {
+		// push the conn back to the pool
+		upstream.PushConn(upstreamConn)
+	} else {
+		upstreamConn.Close()
 	}
 
 	response := httpResponse.Response // HTTP/1.1 200 OK\r\n --> already has \r\n, adding another \r\n wuld signal end of headers
