@@ -2,7 +2,6 @@ package services
 
 import (
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -124,7 +123,8 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool) {
 	// now the second one(upstream to client) is the only one left, no need to run simul
 	// only need to make sure this func(HandleConn) doesnt exit before sending a response to client
 	// so no goroutine needed, io.Copy blocks and continously reads(from upstream) and writes(to client) until conn close or error
-	io.Copy(clientConn, upstreamConn) // BLOCKS the main goroutine till the connection is closed or error occurs
+	//io.Copy(clientConn, upstreamConn) // BLOCKS the main goroutine till the connection is closed or error occurs
+	// now that body is aslo read in ParseResponse, no need for io.Copy, it was there just to read the leftover(body)
 
 	// log the entire req at the end
 	logger.Info("Request completed!",
