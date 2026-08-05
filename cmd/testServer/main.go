@@ -38,7 +38,7 @@ func main() {
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		// set headeers
 		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Connection", "close")
+		w.Header().Set("Connection", "keep-alive")
 		w.WriteHeader(http.StatusOK) // HTTP 200 OK
 
 		// for testing unhealthy if route

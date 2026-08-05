@@ -39,7 +39,7 @@ func CreateUpstream(address string) Upstream {
 		SuccessiveFails:  0,
 		SuccessivePasses: 0,
 		CheckInterval:    1 * time.Second,
-		Pool:             make(chan net.Conn),
+		Pool:             make(chan net.Conn, 10),
 	}
 }
 
@@ -79,7 +79,7 @@ func InitUpstreamPool() *UpstreamPool {
 			SuccessiveFails:  0,
 			SuccessivePasses: 0,
 			CheckInterval:    1 * time.Second,
-			Pool:             make(chan net.Conn),
+			Pool:             make(chan net.Conn, 10),
 		})
 	}
 	return pool
