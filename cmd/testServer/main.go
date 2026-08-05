@@ -13,6 +13,21 @@ var logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
 func main() {
 	upstreamPort := os.Getenv("UPSTREAM_PORT")
 	serverName := os.Getenv("SERVER_NAME")
+	delay := os.Getenv("DELAY")
+	if delay == "" {
+		delay = "0"
+	}
+	delayTime, err := time.ParseDuration(delay)
+	if err != nil {
+		logger.Error("Error converting delay to duration", "error", err.Error())
+		os.Exit(1)
+	}
+	// to make a particular server take longer to respond
+	time.Sleep(delayTime)
+	if err != nil {
+		logger.Error("Error converting delay to int", "error", err.Error())
+		os.Exit(1)
+	}
 	if upstreamPort == "" {
 		upstreamPort = "8848"
 	}

@@ -40,3 +40,11 @@ services:
     environment:
       - SERVER_NAME=backend-3
       - UPSTREAM_PORT=8850
+      - DELAY_REQ=300ms
+
+# to check if the least conn is working an idea is:
+#  add a delay var to one of the backends
+#  add the dealy to the backends endopoints
+#  this will make that single backend slower and it should get fewer requests
+#  will be slower cuz it will have to wait for the delay adn thus accumulate more active connections than the others
+#  meaning the proxy will send less requests to the slower backend
