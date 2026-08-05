@@ -69,6 +69,8 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool) {
 		logger.Error("Error forwarding request!", "error", err.Error())
 		// 502 bad gateway
 		clientConn.Write([]byte("HTTP/1.1 502 Failed to forward request\r\n\r\n"))
+		// close the upstream conn directly
+		upstreamConn.Close()
 		return
 	}
 	//logger.Debug("Forwarding Complete-Response Parsing Started")
@@ -78,6 +80,8 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool) {
 		logger.Error("Error parsing response!", "error", err.Error())
 		// 502 bad gateway
 		clientConn.Write([]byte("HTTP/1.1 502 Failed to parse response\r\n\r\n"))
+		// close the upstream conn directly
+		upstreamConn.Close()
 		return
 	}
 
@@ -92,9 +96,10 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool) {
 		}
 	}
 
+	// close or push the conn to the pool
 	keepAlive := httpResponse.Headers["Connection"]
 	if keepAlive == "keep-alive" {
-		// push the conn back to the pool
+		// push the conn back to the pool if its kept alive
 		upstream.PushConn(upstreamConn)
 	} else {
 		upstreamConn.Close()
