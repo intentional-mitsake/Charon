@@ -179,6 +179,7 @@ func (u *Upstream) PullConn() (net.Conn, error) {
 	// without default, it would be blocking, i.e it would wait for a conn to be added to the pool
 	select {
 	case conn := <-u.Pool:
+		logger.Info("Got connection from the pool", "Upstream", u.Address)
 		return conn, nil
 	default:
 		// already have an address and ohter info abt the upstream in the struct
