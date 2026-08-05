@@ -24,10 +24,6 @@ func main() {
 	}
 	// to make a particular server take longer to respond
 	time.Sleep(delayTime)
-	if err != nil {
-		logger.Error("Error converting delay to int", "error", err.Error())
-		os.Exit(1)
-	}
 	if upstreamPort == "" {
 		upstreamPort = "8848"
 	}
