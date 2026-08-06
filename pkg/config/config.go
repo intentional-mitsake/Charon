@@ -1,5 +1,10 @@
 package config
 
+import (
+	"sync"
+	"time"
+)
+
 /*
 GET /auth?params HTTP/1.1
 Host: api.example.com
@@ -22,6 +27,14 @@ type HTTPResponse struct {
 	Body       string
 }
 
+type TokenBucket struct {
+	Capacity   float64   // max number of tokens
+	Rate       float64   // refil rate in tokens per second
+	CurrTokens float64   // current number of tokens
+	LastRefill time.Time // last time tokens were refilled
+	Mu         sync.Mutex
+}
+
 func CreateHttpReq() HTTPRequest {
 	return HTTPRequest{
 		// panics if not initialized
@@ -32,5 +45,15 @@ func CreateHttpReq() HTTPRequest {
 func CreateHttpResp() HTTPResponse {
 	return HTTPResponse{
 		Headers: make(map[string]string),
+	}
+}
+
+func CreateTokenBucket(capacity float64, rate float64) *TokenBucket {
+	return &TokenBucket{
+		Capacity:   capacity,
+		Rate:       rate,
+		CurrTokens: capacity,
+		LastRefill: time.Now(),
+		Mu:         sync.Mutex{},
 	}
 }
