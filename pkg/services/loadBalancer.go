@@ -32,17 +32,6 @@ type Upstream struct {
 	BeingChecked atomic.Bool // found out theres a way to use atomic for bools
 }
 
-func CreateUpstream(address string) Upstream {
-	return Upstream{Address: address,
-		ActiveConns:      0,
-		Healthy:          true,
-		SuccessiveFails:  0,
-		SuccessivePasses: 0,
-		CheckInterval:    1 * time.Second,
-		Pool:             make(chan net.Conn, 10),
-	}
-}
-
 func (u *Upstream) Acquire() {
 	// func is same as using:
 	// mu.Lock() -> counter++ -> mu.Unlock()
@@ -80,6 +69,7 @@ func InitUpstreamPool() *UpstreamPool {
 			SuccessivePasses: 0,
 			CheckInterval:    1 * time.Second,
 			Pool:             make(chan net.Conn, 10),
+			Mu:               sync.RWMutex{},
 		})
 	}
 	return pool
