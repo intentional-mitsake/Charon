@@ -6,50 +6,132 @@ Charon sits in front of your upstream servers, routes traffic intelligently, and
 
 ---
 
-## Goals
+## What it does
 
-- Handle real HTTP and HTTPS traffic across a pool of upstream servers
-- Distribute load using least connections so busy servers naturally get fewer requests
-- Detect and recover from upstream failures automatically
-- Fail fast when an upstream is down rather than letting requests pile up
-- Rate limit at the edge before bad traffic reaches your services
-- Give full visibility into what's happening through logs, metrics, and a live dashboard
-- Accept config changes without restarting
+Charon sits in front of a pool of upstream servers and handles everything a production proxy needs:
 
----
-
-## How it works
-
-### TCP & HTTP
-
-Charon accepts raw TCP connections and parses HTTP/1.1 requests at the wire level — method, path, version, headers, body — with no standard library HTTP handling. Responses are parsed and streamed back to the client the same way. Every request gets `X-Forwarded-For` injected with the real client IP, and everything is logged: method, path, status, latency.
-
-### Load balancing
-
-Requests go to whichever upstream has the fewest in-flight connections at that moment. Under skewed load, slow servers naturally attract fewer new requests without any explicit tuning. Ties are broken by round-robin.
-
-The pool is protected by a `sync.RWMutex` so multiple goroutines can select an upstream simultaneously — writes (adding or removing a server) are exclusive, reads aren't. Each upstream tracks its active connection count with `sync/atomic`, and a `defer upstream.Release()` ensures the counter always decrements no matter how the handler exits.
-
-### Health checking & failover
-
-Upstreams are monitored two ways.
-
-**Active checks** run on a background goroutine — a `GET /health` to each upstream on a configurable interval. There's hysteresis built in: 3 consecutive failures to mark an upstream unhealthy, 2 consecutive successes to restore it. This prevents a briefly-flaky server from being yanked out and put back in rotation repeatedly.
-
-When an upstream fails, the check interval backs off exponentially (1s → 2s → 4s → ... capped at 64s), with random jitter added to each delay. This matters in a fleet: without jitter, multiple proxy instances all retry at the same moment and can hammer a recovering server all at once.
-
-**Passive checks** run on real traffic. 5xx responses and connection errors update the same health counters as active checks, so a degraded upstream can be pulled from rotation immediately — no waiting for the next scheduled probe.
-
-All health state per upstream (counters, healthy flag, check interval) lives behind its own mutex, so goroutines managing different upstreams don't contend with each other.
+- Accepts raw TCP connections and parses HTTP/1.1 at the wire level
+- Routes traffic using **least connections** so slow servers naturally receive fewer requests
+- Maintains a **connection pool** per upstream, reusing TCP connections across requests
+- Monitors upstream health with **active and passive health checks**, removing dead servers automatically
+- Applies **exponential backoff with jitter** when retrying unhealthy upstreams
+- Enforces **per-IP rate limiting** using a token bucket algorithm
+- Injects `X-Forwarded-For` headers and logs structured request telemetry
 
 ---
 
-## What's next
+## Architecture
 
-Connection pooling — reuse TCP connections to upstreams rather than opening a new one per request, with stale connection detection.
+```
+client
+  │
+  ▼
+TCP listener (port 80)
+  │
+  ├─ Rate limiter (per-IP token bucket)
+  │
+  ├─ Request parser (method, path, headers, body)
+  │
+  ├─ Upstream selector (least connections + round-robin tiebreak)
+  │
+  ├─ Connection pool (reuse idle TCP connections)
+  │
+  ├─ Request forwarder → upstream server
+  │
+  └─ Response parser → client
+       │
+       └─ Passive health update (5xx → mark upstream degraded)
+
+Background:
+  └─ Health checker (active GET /health, per-upstream backoff)
+```
 
 ---
 
+## What's done
+
+### 1 — TCP Proxy & HTTP Parsing
+- TCP listener on a configurable port
+- HTTP/1.1 parser from raw bytes: method, path, version, headers, body via `Content-Length`
+- `X-Forwarded-For` injection with real client IP
+- Structured request logging: method, path, status, latency
+
+### 2 — Least Connections Load Balancing
+- Thread-safe active connection counter per upstream using `sync/atomic`
+- Least connections selection with `sync.RWMutex` on the pool slice
+- Round-robin tiebreaker when multiple upstreams are tied
+- `defer upstream.Release()` guarantees counter always decrements
+
+### 3 — Health Checking & Automatic Failover
+- **Active checks**: background goroutine sends `GET /health` on a configurable interval
+- **Passive checks**: 5xx responses and connection errors on real traffic update the same health counters
+- Hysteresis: 3 consecutive failures to mark unhealthy, 2 consecutive passes to restore
+- Exponential backoff with jitter on failed upstreams (1s → 2s → 4s → 64s cap)
+- Per-upstream mutex prevents goroutines for different upstreams from contending
+
+### 4 — Connection Pooling
+- `chan net.Conn` per upstream as a lock-free idle connection pool
+- Non-blocking `select` on both pull and push — never blocks the request path
+- `Connection: keep-alive` header check before returning connections to pool
+- Error paths explicitly close connections — broken connections never re-enter the pool
+
+### 5 — Rate Limiting
+- Token bucket algorithm: configurable capacity and fill rate
+- Per-IP buckets stored in `sync.Map` — optimised for read-heavy workloads
+- Lazy refill on each request — no background goroutine needed
+- Denied connections receive `429 Too Many Requests` with `Retry-After` header and are closed immediately
+
+---
+
+## Proving it works
+
+**Least connections under skewed load**
+
+Added `DELAY_REQ=300ms` to backend-3, then ran `hey -n 200 -c 20`:
+
+| Backend | Run 1 | Run 2 |
+|---------|-------|-------|
+| backend-1 (fast) | 78 | 67 |
+| backend-2 (fast) | 78 | 67 |
+| backend-3 (+300ms) | 7 | 2 |
+
+The slow backend received ~5% of traffic instead of the 33% it would get under round-robin. No configuration change — the algorithm adapted automatically to real load.
+
+**Connection pooling**
+
+Under concurrent load (`hey -c 20`), pool hits appear in logs alongside dials — connections returned from one request are reused by the next wave. Under sequential browser traffic the pool stays empty because requests don't overlap.
+
+**Health check recovery**
+
+Killed backend-2 mid-run. After 3 consecutive active check failures, it was removed from rotation. Restarted it. After 2 consecutive passes it was restored. All other traffic continued uninterrupted throughout.
+
+---
+
+**Environment variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `80` | Proxy listen port |
+| `UPSTREAM_ADDRS` | `127.0.0.1:8848,...` | Comma-separated upstream addresses |
+| `HC_INTERVAL` | `15s` | Health check interval |
+
+---
+
+## Key implementation decisions
+
+**Why `chan net.Conn` for the pool**
+Buffered channels are inherently thread-safe — no mutex needed for pool operations. Non-blocking `select` with `default` handles both empty pool (dial fresh) and full pool (discard) without ever blocking the request goroutine.
+
+**Why token bucket over alternatives**
+Fixed window counters allow 2x burst at window boundaries. Leaky bucket queues excess requests, growing memory under attack. Sliding window logs store every timestamp. Token bucket allows legitimate bursts up to capacity, rejects excess immediately, and is O(1) per request with constant memory.
+
+**Why least connections over round-robin**
+Round-robin distributes by count, not by load. A slow upstream accumulates connections at the same rate as fast ones. Least connections naturally routes around slow servers — the slow server's connection count grows, making it less likely to be selected. Self-tuning, no configuration required.
+
+**Why `sync/atomic` for `ActiveConns` but mutex for health state**
+`ActiveConns` is a single integer updated on every request — atomic is a single CPU instruction with no scheduler involvement. Health state involves multiple fields (`Healthy`, `SuccessiveFails`, `SuccessivePasses`, `CheckInterval`) that must change together as one unit — mutex is the correct primitive.
+
+---
 ## Running
 
 ```bash
