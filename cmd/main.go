@@ -1,6 +1,7 @@
 package main
 
 import (
+	"charon/pkg/middleware"
 	"charon/pkg/services"
 	"charon/pkg/utils"
 	"context"
@@ -67,6 +68,17 @@ func main() {
 		if err != nil {
 			logger.Error("Error accepting connection!", "error", err.Error())
 		}
+		clientAddr := conn.RemoteAddr().String()
+		ip, _, _ := net.SplitHostPort(clientAddr)
+		// auto checks if ip has a bucket for it, if no creates new
+		if !middleware.AllowReq(ip) {
+			// if not allowed, close the conn immediately
+			conn.Write([]byte("HTTP/1.1 429 Too Many Requests\r\n\r\n"))
+			conn.Close()
+			continue // skip to the next iteration of the for loop from here(next connection)
+		}
+		// due to continue, if not allowed, this line never runs
+		// 3. handles the connection
 		go services.HandleConnection(conn, upstreamPool)
 	}
 }
