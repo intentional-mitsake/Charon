@@ -67,7 +67,7 @@ func (b *TokenBucket) allow(ip string) bool {
 	}
 }
 
-func AllowReq(ip string) bool {
+func AllowReq(ip string) (bool, map[string]any) {
 	// LoadOrStore(key, value) as the name suggests, loads the value for the key if present in the map,
 	// else it stores and returns the value provides as arg
 	// it returns two things: the value loaded and a bool indicating whether the key was present
@@ -81,5 +81,11 @@ func AllowReq(ip string) bool {
 		logger.Info("New IP!", "IP", ip)
 	}
 	bucket := val.(*TokenBucket)
-	return bucket.allow(ip)
+	// for headers
+	header := make(map[string]any)
+	header["X-RateLimit-Limit"] = bucket.Capacity
+	header["X-RateLimit-Remaining"] = bucket.CurrTokens
+	header["X-RateLimit-Reset"] = bucket.LastRefill.Unix()
+
+	return bucket.allow(ip), header
 }

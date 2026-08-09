@@ -70,8 +70,10 @@ func main() {
 		}
 		clientAddr := conn.RemoteAddr().String()
 		ip, _, _ := net.SplitHostPort(clientAddr)
+
 		// auto checks if ip has a bucket for it, if no creates new
-		if !middleware.AllowReq(ip) {
+		allowed, headers := middleware.AllowReq(ip)
+		if !allowed {
 			// if not allowed, close the conn immediately
 			conn.Write([]byte("HTTP/1.1 429 Too Many Requests\r\n\r\n"))
 			conn.Close()
@@ -79,6 +81,6 @@ func main() {
 		}
 		// due to continue, if not allowed, this line never runs
 		// 3. handles the connection
-		go services.HandleConnection(conn, upstreamPool)
+		go services.HandleConnection(conn, upstreamPool, headers)
 	}
 }

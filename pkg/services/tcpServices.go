@@ -13,7 +13,7 @@ import (
 
 var logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
 
-func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool) {
+func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool, headers map[string]any) {
 	start := time.Now()                       // for latency
 	upstream := upstreamPool.SelectUpstream() // select least conn
 	if upstream == nil {
@@ -108,6 +108,10 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool) {
 	response := httpResponse.Response // HTTP/1.1 200 OK\r\n --> already has \r\n, adding another \r\n wuld signal end of headers
 	for key, val := range httpResponse.Headers {
 		response += fmt.Sprintf("%s: %s\r\n", key, val) // Content-Type: text/html\r\n
+	}
+	for key, val := range headers {
+		// %v is for value, it looks at the type of the value and uses it
+		response += fmt.Sprintf("%s: %v\r\n", key, val) // Content-Type: text/html\r\n
 	}
 	response += "\r\n"            // blank line to show end of headers
 	response += httpResponse.Body // HTML from upstream server
