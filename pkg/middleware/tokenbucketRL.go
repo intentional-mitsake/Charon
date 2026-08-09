@@ -56,9 +56,10 @@ func (b *TokenBucket) allow(ip string) bool {
 	b.LastRefill = time.Now()
 	// 2. Decison
 	if b.CurrTokens >= 1 { // using float so 0.8 is >0 and allowed, cant have that, so >=1
+		// to see how many tokens WHEN allowed, NOT after currenttokens--
+		logger.Info("Request Allowed!", "IP", ip, "Tokens", b.CurrTokens, "Last Refill", b.LastRefill)
 		// if enough tokens(+ve) have been accumulated, allow the request
 		b.CurrTokens--
-		logger.Info("Request Allowed!", "IP", ip, "Tokens", b.CurrTokens, "Last Refill", b.LastRefill)
 		return true
 	} else {
 		// if not enough tokens have been accumulated, deny the request
