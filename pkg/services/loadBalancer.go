@@ -21,7 +21,7 @@ const (
 	HALF_OPEN                            // 2 -->incr with each line by one from the line of iota
 )
 
-const timeout = 10 * time.Second
+const timeout = 3 * time.Second
 const threshold = 5
 
 // for least connections algo
@@ -238,7 +238,7 @@ func (u *Upstream) CircuitBreaker() bool {
 			return true // let the request pass
 		} else {
 			// if its not timed out, close the conn
-			logger.Info("Circuit breaker open", "Upstream", u.Address)
+			logger.Info("Circuit breaker is open", "Upstream", u.Address)
 			return false
 		}
 
@@ -250,7 +250,7 @@ func (u *Upstream) CircuitBreaker() bool {
 		return false
 	} else {
 		// if its not open, do nothing, let the tcpServices handle it
-		logger.Info("Circuit breaker closed", "Upstream", u.Address)
+		logger.Info("Circuit breaker is closed", "Upstream", u.Address)
 		return true
 	}
 }
