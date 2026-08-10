@@ -21,6 +21,9 @@ const (
 	HALF_OPEN                            // 2 -->incr with each line by one from the line of iota
 )
 
+const timeout = 10 * time.Second
+const threshold = 5
+
 // for least connections algo
 type Upstream struct {
 	Address          string        // 127.0.0.1:8848
@@ -218,4 +221,30 @@ func (u *Upstream) PushConn(conn net.Conn) {
 		logger.Info("No space in the pool, closing connection", "Upstream", u.Address)
 		conn.Close()
 	}
+}
+
+func (u *Upstream) CircuitBreaker(conn net.Conn) {
+	u.Mu.Lock()
+	defer u.Mu.Unlock()
+	// check open
+	if u.CBState == OPEN {
+		// check timeout
+		if time.Since(u.CBLastCheck) > timeout {
+			// if its timed out, reset
+			logger.Info("Circuit breaker open", "Upstream", u.Address)
+			// reset to HALF_OPEN
+			u.CBState = HALF_OPEN
+			u.CBLastCheck = time.Now()
+		} else {
+			// if its not timed out, close the conn
+			conn.Write([]byte("HTTP/1.1 503 Service Unavailable\r\n\r\n"))
+			conn.Close()
+			return
+		}
+
+	} else {
+		// if its not open, do nothing, let the tcpServices handle it
+		logger.Info("Circuit breaker closed", "Upstream", u.Address)
+	}
+
 }
