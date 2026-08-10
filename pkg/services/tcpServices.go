@@ -56,6 +56,8 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool, headers m
 	req, err := ParseRequest(clientConn)
 	if err != nil {
 		logger.Error("Error while parsing request!", "error", err.Error())
+		// 400 bad request
+		clientConn.Write([]byte("HTTP/1.1 400 Bad Request\r\n\r\n"))
 		return // exit if cant parse
 	}
 
