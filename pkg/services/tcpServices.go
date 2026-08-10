@@ -28,6 +28,14 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool, headers m
 		return
 	}
 
+	// Circuit Breaker
+	allowed := upstream.CircuitBreaker()
+	if !allowed {
+		// 503 service unavailable
+		clientConn.Write([]byte("HTTP/1.1 503 Service Unavailable\r\n\r\n"))
+		return
+	}
+
 	upstream.Acquire()       // acquire the least conn, add 1
 	defer upstream.Release() // release the least conn, sub 1
 	// 1. Parse the connection
@@ -60,6 +68,8 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool, headers m
 		logger.Error("Error connecting to upstream!", "error", err.Error())
 		// 503 service unavailable
 		clientConn.Write([]byte("HTTP/1.1 503 Failed to connect to Upstream\r\n\r\n"))
+		// incr circuit breaker failure
+		upstream.ChangeCBState(true)
 		return // exit if cnat connect ot the upstream
 	}
 	//defer upstreamConn.Close() // close the upstream conn directly
@@ -72,6 +82,8 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool, headers m
 		logger.Error("Error forwarding request!", "error", err.Error())
 		// 502 bad gateway
 		clientConn.Write([]byte("HTTP/1.1 502 Failed to forward request\r\n\r\n"))
+		// incr circuit breaker failure
+		upstream.ChangeCBState(true)
 		// close the upstream conn directly
 		upstreamConn.Close()
 		return
@@ -83,6 +95,8 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool, headers m
 		logger.Error("Error parsing response!", "error", err.Error())
 		// 502 bad gateway
 		clientConn.Write([]byte("HTTP/1.1 502 Failed to parse response\r\n\r\n"))
+		// incr circuit breaker failure
+		upstream.ChangeCBState(true)
 		// close the upstream conn directly
 		upstreamConn.Close()
 		return
@@ -145,6 +159,7 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool, headers m
 		"Status", httpResponse.StatusCode,
 		"Latency", time.Since(start).String(), //  pretty much time.Now().Sub(start)
 	)
+	upstream.ChangeCBState(false)
 	/*
 		This was Layer 4 implementation, above is Layer 7 implementation
 			// in GO, chan struct{} is used for synchronization, it covers 0 bytes of ram,

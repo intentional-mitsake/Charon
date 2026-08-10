@@ -223,7 +223,7 @@ func (u *Upstream) PushConn(conn net.Conn) {
 	}
 }
 
-func (u *Upstream) CircuitBreaker(conn net.Conn) {
+func (u *Upstream) CircuitBreaker() bool {
 	u.Mu.Lock()
 	defer u.Mu.Unlock()
 	// check open
@@ -231,20 +231,52 @@ func (u *Upstream) CircuitBreaker(conn net.Conn) {
 		// check timeout
 		if time.Since(u.CBLastCheck) > timeout {
 			// if its timed out, reset
-			logger.Info("Circuit breaker open", "Upstream", u.Address)
+			logger.Info("Circuit breaker reset to half open", "Upstream", u.Address)
 			// reset to HALF_OPEN
 			u.CBState = HALF_OPEN
 			u.CBLastCheck = time.Now()
+			return true // let the request pass
 		} else {
 			// if its not timed out, close the conn
-			conn.Write([]byte("HTTP/1.1 503 Service Unavailable\r\n\r\n"))
-			conn.Close()
-			return
+			logger.Info("Circuit breaker open", "Upstream", u.Address)
+			return false
 		}
 
+	} else if u.CBState == HALF_OPEN {
+		if u.BeingChecked.CompareAndSwap(false, true) {
+			// only one goroutine can get it
+			return true
+		}
+		return false
 	} else {
 		// if its not open, do nothing, let the tcpServices handle it
 		logger.Info("Circuit breaker closed", "Upstream", u.Address)
+		return true
 	}
+}
 
+func (u *Upstream) ChangeCBState(reqFail bool) {
+	u.Mu.Lock()
+	defer u.Mu.Unlock()
+	// if request fails
+	if reqFail {
+		u.CBFailureCount++
+		if u.CBFailureCount > threshold || u.CBState == HALF_OPEN {
+			u.CBSuccessCount = 0
+			u.CBState = OPEN
+			logger.Info("Circuit breaker opened", "Upstream", u.Address)
+			u.CBLastCheck = time.Now()
+			// to allow others to get it
+			u.BeingChecked.Store(false)
+		}
+	} else if !reqFail {
+		u.CBFailureCount = 0
+		u.CBSuccessCount++
+		if u.CBSuccessCount > threshold {
+			u.CBState = CLOSED
+			logger.Info("Circuit breaker closed", "Upstream", u.Address)
+			u.CBLastCheck = time.Now()
+			u.BeingChecked.Store(false)
+		}
+	}
 }
