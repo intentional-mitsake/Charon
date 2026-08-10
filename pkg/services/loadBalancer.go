@@ -44,8 +44,8 @@ type Upstream struct {
 	// for cicuit breaker
 	// ref: learn.microsoft/en-us/azure/patterns/circuit-breaker
 	CBState        CircuitBreakerState // to check if circuit breaker is open
-	CBFailureCount int                 // default should be 0
-	CBSuccessCount int                 // default should be 0
+	CBFailureCount int64               // default should be 0
+	CBSuccessCount int64               // default should be 0
 	CBLastCheck    time.Time           // from ref, to reset the circuit breaker
 }
 

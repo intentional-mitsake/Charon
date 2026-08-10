@@ -13,8 +13,6 @@ import (
 
 var logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
 
-const timeout = 10 * time.Second
-
 func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool, headers map[string]any) {
 	start := time.Now()                       // for latency
 	upstream := upstreamPool.SelectUpstream() // select least conn
@@ -30,22 +28,7 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool, headers m
 		return
 	}
 
-	// circuit breaking before pulling a connection from the pool and acquring
-	if upstream.CBState == OPEN {
-		logger.Info("The upstream CB state is OPEN", "Upstream", upstream.Address)
-		// if it's open, check if the timeout for CB has passed
-		if time.Since(upstream.CBLastCheck) > timeout {
-			logger.Info("Timeout for CB has passed", "Upstream", upstream.Address)
-			upstream.CBState = HALF_OPEN
-
-			upstream.CBLastCheck = time.Now()
-		} else {
-			logger.Info("Timeout for CB has not passed yet", "Upstream", upstream.Address)
-			upstream.CBLastCheck = time.Now()
-			clientConn.Write([]byte("HTTP/1.1 503 Service Unavailable\r\n\r\n"))
-			return
-		}
-	}
+	// circuit breaking
 
 	upstream.Acquire()       // acquire the least conn, add 1
 	defer upstream.Release() // release the least conn, sub 1
@@ -56,8 +39,6 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool, headers m
 	req, err := ParseRequest(clientConn)
 	if err != nil {
 		logger.Error("Error while parsing request!", "error", err.Error())
-		// 400 bad request
-		clientConn.Write([]byte("HTTP/1.1 400 Bad Request\r\n\r\n"))
 		return // exit if cant parse
 	}
 
