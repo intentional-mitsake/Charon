@@ -45,6 +45,7 @@ type Upstream struct {
 	// ref: learn.microsoft/en-us/azure/patterns/circuit-breaker
 	CBState        CircuitBreakerState // to check if circuit breaker is open
 	CBFailureCount int                 // default should be 0
+	CBSuccessCount int                 // default should be 0
 	CBLastCheck    time.Time           // from ref, to reset the circuit breaker
 }
 
@@ -87,6 +88,7 @@ func InitUpstreamPool() *UpstreamPool {
 			Pool:             make(chan net.Conn, 10),
 			Mu:               sync.RWMutex{},
 			CBFailureCount:   0,
+			CBSuccessCount:   0,
 			CBLastCheck:      time.Now(),
 		})
 	}
