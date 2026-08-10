@@ -260,21 +260,26 @@ func (u *Upstream) ChangeCBState(reqFail bool) {
 	defer u.Mu.Unlock()
 	// if request fails
 	if reqFail {
+		// increment failure count
 		u.CBFailureCount++
+		// if either fc passes threshold or state is half open, set state to open
 		if u.CBFailureCount > threshold || u.CBState == HALF_OPEN {
-			u.CBSuccessCount = 0
+			u.CBSuccessCount = 0 // reset success count
 			u.CBState = OPEN
 			logger.Info("Circuit breaker opened", "Upstream", u.Address)
-			u.CBLastCheck = time.Now()
-			// to allow others to get it
+			u.CBLastCheck = time.Now() // set last check to now
+			// this will make suer being checked is false so that others dont get blocked
 			u.BeingChecked.Store(false)
 		}
 	} else if !reqFail {
+		// if request passes, increment success count, reset failure count
 		u.CBFailureCount = 0
 		u.CBSuccessCount++
 		if u.CBSuccessCount > threshold {
+			// if success count passes threshold, set state to closed
 			u.CBState = CLOSED
 			logger.Info("Circuit breaker closed", "Upstream", u.Address)
+			// set last check to now
 			u.CBLastCheck = time.Now()
 			u.BeingChecked.Store(false)
 		}
