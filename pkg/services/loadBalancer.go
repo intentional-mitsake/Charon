@@ -10,6 +10,15 @@ import (
 	"time"
 )
 
+// this is the stnadard way to create enum in GO
+type CircuitBreakerState int
+
+const (
+	OPEN      CircuitBreakerState = iota // ioat acts as an auto-incr counter starting at 0
+	CLOSED                               // 1
+	HALF_OPEN                            // 2 -->incr with each line by one from the line of iota
+)
+
 // for least connections algo
 type Upstream struct {
 	Address          string        // 127.0.0.1:8848
@@ -30,6 +39,9 @@ type Upstream struct {
 
 	// for the check delay problem after wg
 	BeingChecked atomic.Bool // found out theres a way to use atomic for bools
+	// for cicuit breaker
+	// ref: learn.microsoft/en-us/azure/patterns/circuit-breaker
+	State CircuitBreakerState
 }
 
 func (u *Upstream) Acquire() {
