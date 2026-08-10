@@ -14,8 +14,10 @@ import (
 type CircuitBreakerState int
 
 const (
-	OPEN      CircuitBreakerState = iota // ioat acts as an auto-incr counter starting at 0
-	CLOSED                               // 1
+	// ref: learn.microsoft/en-us/azure/patterns/circuit-breaker
+	// by defalut, circuit breaker is closed
+	CLOSED    CircuitBreakerState = iota // ioat acts as an auto-incr counter starting at 0
+	OPEN                                 // 1
 	HALF_OPEN                            // 2 -->incr with each line by one from the line of iota
 )
 
@@ -41,7 +43,9 @@ type Upstream struct {
 	BeingChecked atomic.Bool // found out theres a way to use atomic for bools
 	// for cicuit breaker
 	// ref: learn.microsoft/en-us/azure/patterns/circuit-breaker
-	State CircuitBreakerState
+	CBState        CircuitBreakerState // to check if circuit breaker is open
+	CBFailureCount int                 // default should be 0
+	CBLastCheck    time.Time           // from ref, to reset the circuit breaker
 }
 
 func (u *Upstream) Acquire() {
@@ -82,6 +86,8 @@ func InitUpstreamPool() *UpstreamPool {
 			CheckInterval:    1 * time.Second,
 			Pool:             make(chan net.Conn, 10),
 			Mu:               sync.RWMutex{},
+			CBFailureCount:   0,
+			CBLastCheck:      time.Now(),
 		})
 	}
 	return pool
