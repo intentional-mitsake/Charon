@@ -275,7 +275,9 @@ func (u *Upstream) ChangeCBState(reqFail bool) {
 		// if request passes, increment success count, reset failure count
 		u.CBFailureCount = 0
 		u.CBSuccessCount++
-		if u.CBSuccessCount > threshold {
+		// for change to closed, the condition isnt threshold
+		// its supposed to change if the single probe from half open state passes
+		if u.CBState == HALF_OPEN {
 			// if success count passes threshold, set state to closed
 			u.CBState = CLOSED
 			logger.Info("Circuit breaker closed", "Upstream", u.Address)
