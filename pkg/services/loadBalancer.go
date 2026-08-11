@@ -235,7 +235,12 @@ func (u *Upstream) CircuitBreaker() bool {
 			// reset to HALF_OPEN
 			u.CBState = HALF_OPEN
 			u.CBLastCheck = time.Now()
-			return true // let the request pass
+			if u.BeingChecked.CompareAndSwap(false, true) {
+				// this way the first goroutine to access this sets beingChecked to true
+				// so the rest of the goroutines dont get it and return false
+				return true
+			}
+			return false
 		} else {
 			// if its not timed out, close the conn
 			logger.Info("Circuit breaker is open", "Upstream", u.Address)
@@ -269,6 +274,11 @@ func (u *Upstream) ChangeCBState(reqFail bool) {
 			logger.Info("Circuit breaker opened", "Upstream", u.Address)
 			u.CBLastCheck = time.Now() // set last check to now
 			// this will make suer being checked is false so that others dont get blocked
+			// the CircuitBreaker func will will set it to true if a probe is to be sent in the half open state
+			// it runs at the top of every req
+			// this runs at the fail of each req and success of each req
+			// i.e. it runs at the end of each req, so for all cases, it needs to set BeingChecked to false
+			// this way at the end of each req, the BeingChecked is reset to false
 			u.BeingChecked.Store(false)
 		}
 	} else if !reqFail {
