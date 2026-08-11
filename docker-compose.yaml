@@ -11,7 +11,7 @@ services:
     # because all the services are in the def together, we can access them by name, no need to specify ip
     # also can use same port for each backend as Docker auto differentiates them
       - UPSTREAM_ADDRS=backend-1:8848,backend-2:8849,backend-3:8850
-      - HC_INTERVAL=15s
+      - HC_INTERVAL=150s
   
   # rest of the services
   backend-1:
