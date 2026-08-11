@@ -16,6 +16,7 @@ Charon sits in front of a pool of upstream servers and handles everything a prod
 - Monitors upstream health with **active and passive health checks**, removing dead servers automatically
 - Applies **exponential backoff with jitter** when retrying unhealthy upstreams
 - Enforces **per-IP rate limiting** using a token bucket algorithm
+- Trips a **per-upstream circuit breaker** that fails fast on known-bad upstreams without waiting for a dial
 - Injects `X-Forwarded-For` headers and logs structured request telemetry
 
 ---
@@ -33,6 +34,8 @@ TCP listener (port 80)
   ├─ Request parser (method, path, headers, body)
   │
   ├─ Upstream selector (least connections + round-robin tiebreak)
+  │
+  ├─ Circuit breaker (CLOSED / OPEN / HALF_OPEN per upstream)
   │
   ├─ Connection pool (reuse idle TCP connections)
   │
@@ -81,6 +84,16 @@ Background:
 - Lazy refill on each request — no background goroutine needed
 - Denied connections receive `429 Too Many Requests` with `Retry-After` header and are closed immediately
 
+### 6 — Circuit Breaker
+- Per-upstream state machine with three states: **CLOSED** (normal), **OPEN** (fail fast), **HALF_OPEN** (probe)
+- Runs inline in `HandleConnection` on every request — not a background process
+- CLOSED → OPEN after N consecutive real-traffic failures; returns `503` immediately without dialing
+- OPEN → HALF_OPEN after a cooldown timer expires
+- HALF_OPEN lets exactly one probe request through using `atomic.Bool` with `CompareAndSwap` — concurrent requests are blocked until the probe resolves
+- Probe success → CLOSED immediately (no threshold, `BeingChecked` already enforces one probe)
+- Probe failure → OPEN with reset timer
+- Separate failure counters from health check counters — health checks and the circuit breaker track different signals and must not interfere
+
 ---
 
 ## Proving it works
@@ -104,6 +117,10 @@ Under concurrent load (`hey -c 20`), pool hits appear in logs alongside dials �
 **Health check recovery**
 
 Killed backend-2 mid-run. After 3 consecutive active check failures, it was removed from rotation. Restarted it. After 2 consecutive passes it was restored. All other traffic continued uninterrupted throughout.
+
+**Circuit breaker**
+
+Killed backend-2 mid-run. After the failure threshold was crossed on live traffic, the breaker opened — subsequent requests to that upstream returned `503` immediately without dialing. After the cooldown, one probe request was let through; on recovery it closed the breaker and normal traffic resumed.
 
 ---
 
@@ -131,7 +148,14 @@ Round-robin distributes by count, not by load. A slow upstream accumulates conne
 **Why `sync/atomic` for `ActiveConns` but mutex for health state**
 `ActiveConns` is a single integer updated on every request — atomic is a single CPU instruction with no scheduler involvement. Health state involves multiple fields (`Healthy`, `SuccessiveFails`, `SuccessivePasses`, `CheckInterval`) that must change together as one unit — mutex is the correct primitive.
 
+**Why the circuit breaker is separate from health checking**
+`Healthy=false` excludes an upstream from `SelectUpstream` entirely — it won't be chosen at all. The circuit breaker operates on upstreams that *are* selected but may be mid-failure. Health checks are slow and deliberate (timer-driven, debounced with hysteresis). The circuit breaker is fast and per-request (real traffic, trips immediately). Both are needed.
+
+**Why `CompareAndSwap` for HALF_OPEN probing**
+Plain `if u.CBState == HALF_OPEN` doesn't work — multiple goroutines can all read the state simultaneously and all get through. `atomic.Bool.CompareAndSwap(false, true)` is a single CPU instruction; only the one goroutine that wins the swap gets to probe. All others return `503` until the probe resolves and `BeingChecked` is cleared.
+
 ---
+
 ## Running
 
 ```bash
