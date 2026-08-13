@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -92,14 +93,47 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool, headers m
 
 	httpResponse, err := ParseResponse(upstreamConn)
 	if err != nil {
-		logger.Error("Error parsing response!", "error", err.Error())
-		// 502 bad gateway
-		clientConn.Write([]byte("HTTP/1.1 502 Failed to parse response\r\n\r\n"))
-		// incr circuit breaker failure
-		upstream.ChangeCBState(true)
 		// close the upstream conn directly
 		upstreamConn.Close()
-		return
+		logger.Error("Error parsing response!", "error", err.Error())
+		if err == io.EOF {
+			// when i killed backend 2, this happens, EOF,
+			// its cuz of conn pool, b2 has some pooled conn whn it was up,
+			// after it goes down, ParseResponse tries to read the data from one of these conn
+			// this only happens if backend2 is selected after going down(which only happens for 3 fail cases consectuively)
+			newConn, freshErr := net.Dial("tcp", upstream.Address) // dial a new conn
+			if freshErr != nil {
+				logger.Error("Error connecting to the upstream", "Upstream", upstream.Address)
+				clientConn.Write([]byte("HTTP/1.1 503 Failed to connect to Upstream\r\n\r\n"))
+				upstream.ChangeCBState(true)
+				return
+			}
+			freshErr = ForwardRequest(req, clientConn, newConn) // retry the request
+			if freshErr != nil {
+				logger.Error("Error forwarding request!", "error", freshErr.Error())
+				// 502 bad gateway
+				clientConn.Write([]byte("HTTP/1.1 502 Failed to forward request\r\n\r\n"))
+				// incr circuit breaker failure
+				upstream.ChangeCBState(true)
+				return
+			}
+			httpResponse, err = ParseResponse(newConn) // retry parsing
+			if err != nil {
+				logger.Error("Error parsing response!", "error", err.Error())
+				// 502 bad gateway
+				clientConn.Write([]byte("HTTP/1.1 502 Failed to parse response\r\n\r\n"))
+				// incr circuit breaker failure
+				upstream.ChangeCBState(true)
+				return
+			}
+			upstreamConn = newConn // use the new conn
+		} else { // NON EOF error
+			// 502 bad gateway
+			clientConn.Write([]byte("HTTP/1.1 502 Failed to parse response\r\n\r\n"))
+			// incr circuit breaker failure
+			upstream.ChangeCBState(true)
+			return
+		}
 	}
 
 	// passive health check
