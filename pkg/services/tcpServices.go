@@ -101,6 +101,7 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool, headers m
 			// its cuz of conn pool, b2 has some pooled conn whn it was up,
 			// after it goes down, ParseResponse tries to read the data from one of these conn
 			// this only happens if backend2 is selected after going down(which only happens for 3 fail cases consectuively)
+			logger.Info("Dialing a new connection to the upstream", "Upstream", upstream.Address)
 			newConn, freshErr := net.Dial("tcp", upstream.Address) // dial a new conn
 			if freshErr != nil {
 				logger.Error("Error connecting to the upstream", "Upstream", upstream.Address)
@@ -108,6 +109,7 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool, headers m
 				upstream.ChangeCBState(true)
 				return
 			}
+			logger.Info("Retrying request forwarding", "Upstream", upstream.Address)
 			freshErr = ForwardRequest(req, clientConn, newConn) // retry the request
 			if freshErr != nil {
 				logger.Error("Error forwarding request!", "error", freshErr.Error())
@@ -117,6 +119,7 @@ func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool, headers m
 				upstream.ChangeCBState(true)
 				return
 			}
+			logger.Info("Retrying Response Parsing", "Upstream", upstream.Address)
 			httpResponse, err = ParseResponse(newConn) // retry parsing
 			if err != nil {
 				logger.Error("Error parsing response!", "error", err.Error())
