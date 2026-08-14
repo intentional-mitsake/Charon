@@ -14,7 +14,7 @@ import (
 // ref from: medium @diasmashikovnasa
 // basically building a reverse proxy
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
+	var logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{}))
 	// Start proxy on port 80
 	port := os.Getenv("PORT")
 	if port == "" {

@@ -32,7 +32,7 @@ func CreateTokenBucket() *TokenBucket {
 	}
 }
 
-var logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
+var logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{}))
 
 // after some research, sync.Map is a thread safe map meaning it can be used concurrently
 // BUT its not good for write heavy operations, for those, use standard mutex

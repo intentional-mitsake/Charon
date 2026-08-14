@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-var logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
+var logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{}))
 
 // context is used for signaling
 // pointer passing of upstream pool and upstream is very imp

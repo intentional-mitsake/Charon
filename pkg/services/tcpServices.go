@@ -12,7 +12,7 @@ import (
 	_ "github.com/google/uuid"
 )
 
-var logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
+var logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{}))
 
 func HandleConnection(clientConn net.Conn, upstreamPool *UpstreamPool, headers map[string]any) {
 	start := time.Now()                       // for latency

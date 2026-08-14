@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-var logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
+var logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{}))
 
 func main() {
 	upstreamPort := os.Getenv("UPSTREAM_PORT")
