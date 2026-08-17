@@ -13,11 +13,12 @@ Charon sits in front of a pool of upstream servers and handles everything a prod
 - Accepts raw TCP connections and parses HTTP/1.1 at the wire level
 - Routes traffic using **least connections** so slow servers naturally receive fewer requests
 - Maintains a **connection pool** per upstream, reusing TCP connections across requests
+- Detects and retries stale pooled connections on EOF — no dropped requests when an upstream restarts
 - Monitors upstream health with **active and passive health checks**, removing dead servers automatically
 - Applies **exponential backoff with jitter** when retrying unhealthy upstreams
 - Enforces **per-IP rate limiting** using a token bucket algorithm
 - Trips a **per-upstream circuit breaker** that fails fast on known-bad upstreams without waiting for a dial
-- Injects `X-Forwarded-For` headers and logs structured request telemetry
+- Logs structured JSON telemetry on every request: method, path, status, latency, upstream, request ID
 
 ---
 
@@ -29,15 +30,18 @@ client
   ▼
 TCP listener (port 80)
   │
-  ├─ Rate limiter (per-IP token bucket)
+  ├─ Rate limiter (per-IP token bucket → 429 if exceeded)
   │
   ├─ Request parser (method, path, headers, body)
+  │
+  ├─ X-Request-ID injection (generate if absent, propagate always)
   │
   ├─ Upstream selector (least connections + round-robin tiebreak)
   │
   ├─ Circuit breaker (CLOSED / OPEN / HALF_OPEN per upstream)
   │
   ├─ Connection pool (reuse idle TCP connections)
+  │      └─ Stale connection retry (EOF → close, dial fresh, retry once)
   │
   ├─ Request forwarder → upstream server
   │
@@ -75,7 +79,8 @@ Background:
 ### 4 — Connection Pooling
 - `chan net.Conn` per upstream as a lock-free idle connection pool
 - Non-blocking `select` on both pull and push — never blocks the request path
-- `Connection: keep-alive` header check before returning connections to pool
+- Stale connection retry: EOF from `ParseResponse` → close dead connection, dial fresh, retry once; non-EOF errors (5xx) are not retried — request reached the server
+- `Connection: close` header check before returning connections to pool; keep-alive is the HTTP/1.1 default
 - Error paths explicitly close connections — broken connections never re-enter the pool
 
 ### 5 — Rate Limiting
@@ -90,9 +95,13 @@ Background:
 - CLOSED → OPEN after N consecutive real-traffic failures; returns `503` immediately without dialing
 - OPEN → HALF_OPEN after a cooldown timer expires
 - HALF_OPEN lets exactly one probe request through using `atomic.Bool` with `CompareAndSwap` — concurrent requests are blocked until the probe resolves
-- Probe success → CLOSED immediately (no threshold, `BeingChecked` already enforces one probe)
+- Probe success → CLOSED immediately (no threshold; `BeingChecked` already enforces one probe)
 - Probe failure → OPEN with reset timer
 - Separate failure counters from health check counters — health checks and the circuit breaker track different signals and must not interfere
+
+### 7 — Observability
+- Structured JSON logging via `slog.NewJSONHandler` — every request produces one machine-readable log line with timestamp, method, path, status, latency, upstream, and request ID
+- `X-Request-ID` propagation: generated as a UUID if absent on the incoming request, injected into the forwarded request, included in the completion log — a single request can be correlated across proxy and upstream logs
 
 ---
 
@@ -118,9 +127,9 @@ Under concurrent load (`hey -c 20`), pool hits appear in logs alongside dials �
 
 Killed backend-2 mid-run. After 3 consecutive active check failures, it was removed from rotation. Restarted it. After 2 consecutive passes it was restored. All other traffic continued uninterrupted throughout.
 
-**Circuit breaker**
+**Circuit breaker & stale connection retry**
 
-Killed backend-2 mid-run. After the failure threshold was crossed on live traffic, the breaker opened — subsequent requests to that upstream returned `503` immediately without dialing. After the cooldown, one probe request was let through; on recovery it closed the breaker and normal traffic resumed.
+Killed backends 1 and 2 mid-run under concurrent load. Stale pool connections returned EOF immediately — the retry path dialed fresh, confirmed the upstream was gone, and triggered the circuit breaker failure counter. After the threshold, both upstreams opened their breakers and returned `503` without dialing. After the cooldown, HALF_OPEN probes fired; on continued failure, breakers reset to OPEN. backend-3 handled all traffic throughout with zero errors.
 
 ---
 
@@ -138,6 +147,12 @@ Killed backend-2 mid-run. After the failure threshold was crossed on live traffi
 
 **Why `chan net.Conn` for the pool**
 Buffered channels are inherently thread-safe — no mutex needed for pool operations. Non-blocking `select` with `default` handles both empty pool (dial fresh) and full pool (discard) without ever blocking the request goroutine.
+
+**Why stale connection retry is EOF-only**
+EOF means the connection was closed before any response bytes arrived — the request never reached the server, so retrying is safe. A 5xx response means the upstream processed the request and replied; retrying would double-execute it. The distinction matters on anything with side effects.
+
+**Why three timeouts instead of one**
+A single deadline can't cover all three failure modes: an upstream that accepts TCP but never responds (dial hangs), an upstream that accepts the connection then goes silent (header read hangs), and an upstream that sends headers fast but streams a slow body. Each phase needs its own bound.
 
 **Why token bucket over alternatives**
 Fixed window counters allow 2x burst at window boundaries. Leaky bucket queues excess requests, growing memory under attack. Sliding window logs store every timestamp. Token bucket allows legitimate bursts up to capacity, rejects excess immediately, and is O(1) per request with constant memory.
